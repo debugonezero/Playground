@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebugOneZero | Riemann Manifold</title>
+    <title>DebugOneZero | Unified Terminal</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
-        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #000; --panel: rgba(5, 10, 10, 0.9); }
+        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #000; --panel: rgba(5, 12, 12, 0.9); }
         * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
         body { margin: 0; background: var(--bg); overflow: hidden; font-family: 'JetBrains Mono', 'Menlo', monospace; color: white; height: 100dvh; }
-        canvas { position: absolute; inset: 0; z-index: 1; touch-action: none; }
+        canvas { position: absolute; inset: 0; z-index: 1; touch-action: none; background: #000; }
         
         #ui-layer {
             position: absolute; inset: 0; z-index: 10; display: flex; 
@@ -28,20 +28,22 @@
         }
 
         .username { color: var(--gold); font-weight: bold; letter-spacing: 3px; font-size: 0.8rem; }
-        .mjx-chtml { margin: 8px 0 !important; font-size: 0.85rem !important; }
-        .caption { font-size: 0.55rem; color: #444; letter-spacing: 1px; }
+        #status { font-size: 0.55rem; color: var(--glow); margin-top: 5px; text-transform: uppercase; }
+        .mjx-chtml { margin: 8px 0 !important; font-size: 0.8rem !important; color: white !important; }
     </style>
 </head>
 <body>
     <canvas id="gpuCanvas"></canvas>
+    
     <div id="ui-layer">
         <div class="glass-panel">
             <div class="username">@DEBUGONEZERO</div>
-            <div style="font-size: 0.6rem; color: var(--glow);">P3_QUANTUM_CORE // METAL 4.0</div>
+            <div id="status">INITIALIZING GPU...</div>
         </div>
+
         <div class="glass-panel">
             $$\zeta(s) = 2^s \pi^{s-1} \sin\left(\frac{\pi s}{2}\right) \Gamma(1-s) \zeta(1-s)$$
-            <div class="caption">SYMMETRIC MANIFOLD RECONSTRUCTION</div>
+            <div style="font-size: 0.5rem; color: #555; letter-spacing: 1px;">CRITICAL STRIP MANIFOLD RECONSTRUCTION</div>
         </div>
     </div>
 
@@ -62,78 +64,107 @@
 
     @vertex
     fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-        let res = 220u;
+        let res = 200u;
         let x = f32(idx % res) / f32(res) - 0.5;
         let y = f32(idx / res) / f32(res) - 0.5;
         
         let tau = 6.2831853071;
-        let t = (y + 0.5) * u.freq + 10.0;
+        let t = (y + 0.5) * u.freq + 12.0;
         
-        let wave = sin(t * 0.4 - u.time) * cos(x * tau * log(t + u.phase));
-        let z = wave * 0.2 * u.zoom;
+        let wave = sin(t * 0.45 - u.time) * cos(x * tau * log(t + u.phase));
+        let z = wave * 0.18 * u.zoom;
 
         let perspective = 1.0 / (y + 1.5);
         let px = (x * 3.0) * perspective;
-        let py = (z * 6.0) * perspective;
+        let py = (z * 6.5) * perspective;
 
         var out: VertexOutput;
         out.pos = vec4f(px, py, y, 1.0);
         
         let zero = smoothstep(0.04, 0.0, abs(z));
-        out.color = mix(vec3f(0.0, 1.3, 1.1), vec3f(1.9, 1.4, 0.0), zero);
+        // High-Vibrancy palette
+        out.color = mix(vec3f(0.0, 1.0, 0.9), vec3f(1.0, 0.8, 0.0), zero);
         return out;
     }
 
     @fragment
     fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-        return vec4f(in.color * (1.1 / in.pos.w), 1.0);
+        return vec4f(in.color * (1.2 / in.pos.w), 1.0);
     }
     `;
 
     async function init() {
-        if (!navigator.gpu) return;
-        const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
-        const device = await adapter.requestDevice();
-        const canvas = document.getElementById('gpuCanvas');
-        const context = canvas.getContext('webgpu');
-        
-        const format = 'display-p3';
-        const dpr = window.devicePixelRatio || 2;
-        const resize = () => { canvas.width = window.innerWidth * dpr; canvas.height = window.innerHeight * dpr; };
-
-        context.configure({ device, format, colorSpace: 'display-p3', alphaMode: 'premultiplied' });
-
-        const pipeline = device.createRenderPipeline({
-            layout: 'auto',
-            vertex: { module: device.createShaderModule({ code: shaderSource }), entryPoint: 'vs_main' },
-            fragment: { module: device.createShaderModule({ code: shaderSource }), entryPoint: 'fs_main', targets: [{ format }] },
-            primitive: { topology: 'point-list' }
-        });
-
-        const uniformBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        const bindGroup = device.createBindGroup({
-            layout: pipeline.getBindGroupLayout(0),
-            entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
-        });
-
-        function render(time) {
-            device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([time * 0.001, 55.0, 1.0, 2.0]));
-            const encoder = device.createCommandEncoder();
-            const pass = encoder.beginRenderPass({
-                colorAttachments: [{ view: context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 1], loadOp: 'clear', storeOp: 'store' }]
-            });
-            pass.setPipeline(pipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.draw(220 * 220);
-            pass.end();
-            device.queue.submit([encoder.finish()]);
-            requestAnimationFrame(render);
+        const status = document.getElementById('status');
+        if (!navigator.gpu) {
+            status.innerText = "WEBGPU NOT SUPPORTED";
+            return;
         }
 
-        window.onresize = resize;
-        resize();
-        requestAnimationFrame(render);
+        try {
+            const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+            const device = await adapter.requestDevice();
+            const canvas = document.getElementById('gpuCanvas');
+            const context = canvas.getContext('webgpu');
+            
+            const format = navigator.gpu.getPreferredCanvasFormat();
+            const canP3 = window.matchMedia("(color-gamut: p3)").matches;
+            
+            // Scaled resolution for mobile stability
+            const dpr = Math.min(window.devicePixelRatio, 2); 
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+
+            context.configure({ 
+                device, 
+                format, 
+                colorSpace: canP3 ? 'display-p3' : 'srgb',
+                alphaMode: 'premultiplied' 
+            });
+
+            const pipeline = device.createRenderPipeline({
+                layout: 'auto',
+                vertex: { module: device.createShaderModule({ code: shaderSource }), entryPoint: 'vs_main' },
+                fragment: { module: device.createShaderModule({ code: shaderSource }), entryPoint: 'fs_main', targets: [{ format }] },
+                primitive: { topology: 'point-list' }
+            });
+
+            const uniformBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+            const bindGroup = device.createBindGroup({
+                layout: pipeline.getBindGroupLayout(0),
+                entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+            });
+
+            status.innerText = `ENGINE: ACTIVE | ${canP3 ? 'P3' : 'sRGB'} | 120Hz`;
+
+            function render(time) {
+                const data = new Float32Array([time * 0.001, 50.0, 1.0, 2.0]);
+                device.queue.writeBuffer(uniformBuffer, 0, data);
+
+                const encoder = device.createCommandEncoder();
+                const pass = encoder.beginRenderPass({
+                    colorAttachments: [{ 
+                        view: context.getCurrentTexture().createView(), 
+                        clearValue: [0, 0, 0, 1], 
+                        loadOp: 'clear', 
+                        storeOp: 'store' 
+                    }]
+                });
+                
+                pass.setPipeline(pipeline);
+                pass.setBindGroup(0, bindGroup);
+                pass.draw(200 * 200);
+                pass.end();
+                device.queue.submit([encoder.finish()]);
+                requestAnimationFrame(render);
+            }
+            requestAnimationFrame(render);
+
+        } catch (err) {
+            status.innerText = "GPU ERROR: CHECK CONSOLE";
+            console.error(err);
+        }
     }
+
     init();
 </script>
 </body>
