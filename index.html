@@ -14,109 +14,112 @@
     <div id="ui">SYSTEM: WEBGPU LIVE<br>ENGINE: WGSL / METAL<br>DOMAIN: CRITICAL LINE (s=0.5)</div>
     <canvas id="gpuCanvas"></canvas>
 
-    <script type="module">
-        const shaderCode = `
-            struct Uniforms {
-                time: f32,
-                resolution: vec2f,
-            };
-            @group(0) @binding(0) var<uniform> u: Uniforms;
+<script type="module">
+    const shaderCode = `
+        struct Uniforms {
+            time: f32,
+            width: f32,
+            height: f32,
+            unused: f32, // Manual padding for 16-byte alignment
+        };
+        @group(0) @binding(0) var<uniform> u: Uniforms;
 
-            struct VertexOutput {
-                @builtin(position) pos: vec4f,
-                @location(0) color: vec3f,
-            };
+        struct VertexOutput {
+            @builtin(position) pos: vec4f,
+            @location(0) color: vec3f,
+        };
 
-            @vertex
-            fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-                let res = 128u; // Grid resolution
-                let x = f32(idx % res) / f32(res) - 0.5;
-                let y = f32(idx / res) / f32(res);
-                
-                // Riemann-inspired wave math
-                let t = y * 50.0 + 10.0;
-                let sigma = x + 0.5;
-                let wave = sin(t * 0.5 - u.time) * cos(sigma * 10.0);
-                
-                // Gravity effect near the first zero (14.134)
-                let distToZero = abs(t - 14.134725);
-                let z = (wave * 0.1) + (0.02 / (0.1 + distToZero));
+        @vertex
+        fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
+            let res = 128u;
+            let x = f32(idx % res) / f32(res) - 0.5;
+            let y = f32(idx / res) / f32(res);
+            
+            let t = y * 50.0 + 10.0;
+            let wave = sin(t * 0.5 - u.time) * cos(x * 10.0);
+            let z = wave * 0.1;
 
-                var out: VertexOutput;
-                let aspect = u.resolution.x / u.resolution.y;
-                
-                // Projection math (Technician focus)
-                out.pos = vec4f(x * 1.5, z * 2.0, y - 1.0, 1.2 - y);
-                out.color = vec3f(0.0, 0.8, 1.0) * (0.6 + 0.4 * sin(t + u.time));
-                return out;
-            }
+            var out: VertexOutput;
+            // Simplified projection for debugging
+            out.pos = vec4f(x * 1.8, z * 2.0, 0.0, 1.0);
+            out.color = vec3f(0.0, 1.0, 0.8); 
+            return out;
+        }
 
-            @fragment
-            fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-                return vec4f(in.color, 1.0);
-            }
-        `;
+        @fragment
+        fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+            return vec4f(in.color, 1.0);
+        }
+    `;
 
-        async function init() {
-            const adapter = await navigator.gpu.requestAdapter();
-            const device = await adapter.requestDevice();
-            const canvas = document.getElementById('gpuCanvas');
-            const context = canvas.getContext('webgpu');
-            const format = navigator.gpu.getPreferredCanvasFormat();
+    async function init() {
+        if (!navigator.gpu) return;
+        const adapter = await navigator.gpu.requestAdapter();
+        const device = await adapter.requestDevice();
+        const canvas = document.getElementById('gpuCanvas');
+        const context = canvas.getContext('webgpu');
+        const format = navigator.gpu.getPreferredCanvasFormat();
 
-            context.configure({ device, format });
+        context.configure({ device, format, alphaMode: 'premultiplied' });
 
-            const shaderModule = device.createShaderModule({ code: shaderCode });
-            const pipeline = device.createRenderPipeline({
-                layout: 'auto',
-                vertex: { module: shaderModule, entryPoint: 'vs_main' },
-                fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
-                primitive: { topology: 'point-list' }
+        const pipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { 
+                module: device.createShaderModule({ code: shaderCode }), 
+                entryPoint: 'vs_main' 
+            },
+            fragment: { 
+                module: device.createShaderModule({ code: shaderCode }), 
+                entryPoint: 'fs_main', 
+                targets: [{ format }] 
+            },
+            primitive: { topology: 'point-list' }
+        });
+
+        // 16-byte aligned buffer
+        const uniformBuffer = device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        const bindGroup = device.createBindGroup({
+            layout: pipeline.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+        });
+
+        function frame(time) {
+            const uniformData = new Float32Array([time * 0.001, canvas.width, canvas.height, 0]);
+            device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+
+            const commandEncoder = device.createCommandEncoder();
+            const pass = commandEncoder.beginRenderPass({
+                colorAttachments: [{
+                    view: context.getCurrentTexture().createView(),
+                    clearValue: [0, 0, 0, 1],
+                    loadOp: 'clear', storeOp: 'store',
+                }]
             });
 
-            // Uniform buffer (16-byte alignment required)
-            const uniformBuffer = device.createBuffer({
-                size: 16,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            });
+            pass.setPipeline(pipeline);
+            pass.setBindGroup(0, bindGroup);
+            pass.draw(128 * 128); 
+            pass.end();
 
-            const bindGroup = device.createBindGroup({
-                layout: pipeline.getBindGroupLayout(0),
-                entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
-            });
-
-            function frame(time) {
-                // Update Uniforms
-                const uniformData = new Float32Array([time * 0.001, 0, canvas.width, canvas.height]);
-                device.queue.writeBuffer(uniformBuffer, 0, uniformData);
-
-                const commandEncoder = device.createCommandEncoder();
-                const pass = commandEncoder.beginRenderPass({
-                    colorAttachments: [{
-                        view: context.getCurrentTexture().createView(),
-                        clearValue: [0, 0, 0, 1],
-                        loadOp: 'clear', storeOp: 'store',
-                    }]
-                });
-
-                pass.setPipeline(pipeline);
-                pass.setBindGroup(0, bindGroup);
-                pass.draw(128 * 128); // Drawing the full 16,384 point manifold
-                pass.end();
-
-                device.queue.submit([commandEncoder.finish()]);
-                requestAnimationFrame(frame);
-            }
-
-            window.addEventListener('resize', () => {
-                canvas.width = window.innerWidth * window.devicePixelRatio;
-                canvas.height = window.innerHeight * window.devicePixelRatio;
-            });
-            window.dispatchEvent(new Event('resize'));
+            device.queue.submit([commandEncoder.finish()]);
             requestAnimationFrame(frame);
         }
 
-        init();
-    </script>
+        const resize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+        window.addEventListener('resize', resize);
+        resize();
+        requestAnimationFrame(frame);
+    }
+
+    init().catch(console.error);
+</script>
+
 </body>
 </html>
