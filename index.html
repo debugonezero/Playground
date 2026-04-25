@@ -1,159 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebugOneZero | Universal Shell</title>
-    <style>
-        :root { --bg: #000; --accent: #00ffcc; --gold: #ffcc00; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            background: var(--bg); color: white; font-family: 'JetBrains Mono', monospace; 
-            height: 100dvh; display: grid; grid-template-rows: 1fr auto; overflow: hidden;
-        }
+async function handleInjection() {
+    const log = document.getElementById('log');
+    try {
+        const raw = await navigator.clipboard.readText();
+        const data = JSON.parse(raw); // The Packet Unpacker
 
-        #render-target { position: relative; width: 100%; height: 100%; background: #000; }
-        canvas { width: 100%; height: 100%; display: block; touch-action: none; }
-
-        #dock { 
-            background: #0a0a0a; border-top: 1px solid #222; 
-            padding: 20px; display: flex; flex-direction: column; gap: 10px; 
-            padding-bottom: env(safe-area-inset-bottom);
-            z-index: 1000;
-        }
-
-        button { 
-            width: 100%; padding: 18px; border-radius: 12px; border: none;
-            font-weight: bold; font-family: inherit; font-size: 0.9rem;
-            text-transform: uppercase; cursor: pointer;
-            background: var(--accent); color: #000;
-        }
-
-        #hud { position: absolute; top: 20px; left: 20px; pointer-events: none; z-index: 100; }
-        #status { font-size: 0.6rem; color: var(--accent); margin-top: 5px; text-transform: uppercase; }
-        .username { color: var(--gold); font-size: 0.8rem; letter-spacing: 2px; font-weight: bold; }
-    </style>
-</head>
-<body>
-
-<div id="render-target">
-    <canvas id="gpuCanvas"></canvas>
-    <div id="hud">
-        <div class="username">@DEBUGONEZERO</div>
-        <div id="status">CORE: STANDBY</div>
-    </div>
-</div>
-
-<div id="dock">
-    <div id="log" style="font-size: 0.6rem; color: #444; text-align: center; margin-bottom: 5px;">AWAITING INJECTION</div>
-    <button id="injectBtn">Inject Universal Payload</button>
-</div>
-
-<script type="module">
-    // --- GLOBAL SYSTEM BUS ---
-    // We attach these to 'window' so any payload can 'see' and 'control' them.
-    window.device = null;
-    window.pipeline = null;
-    window.bindGroup = null;
-    window.uniformBuffer = null;
-    window.format = null;
-    window.context = null;
-
-    async function initSystem() {
-        if (!navigator.gpu) {
-            document.getElementById('status').innerText = "GPU UNSUPPORTED";
-            return;
-        }
-
-        const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
-        window.device = await adapter.requestDevice();
-        const canvas = document.getElementById('gpuCanvas');
-        window.context = canvas.getContext('webgpu');
-        window.format = navigator.gpu.getPreferredCanvasFormat();
-        
-        const dpr = Math.min(window.devicePixelRatio, 2);
-        canvas.width = canvas.clientWidth * dpr;
-        canvas.height = canvas.clientHeight * dpr;
-
-        window.context.configure({ 
-            device: window.device, 
-            format: window.format, 
-            alphaMode: 'premultiplied' 
-        });
-
-        window.uniformBuffer = window.device.createBuffer({ 
-            size: 16, 
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST 
-        });
-        
-        document.getElementById('status').innerText = "CORE: ACTIVE | 120HZ";
-        requestAnimationFrame(frame);
-    }
-
-    function frame(time) {
-        if (window.pipeline && window.device) {
-            // Write standard uniforms: [time, freq, zoom, phase]
-            window.device.queue.writeBuffer(window.uniformBuffer, 0, new Float32Array([time * 0.001, 55.0, 1.0, 2.0]));
-            
-            const encoder = window.device.createCommandEncoder();
-            const pass = encoder.beginRenderPass({
-                colorAttachments: [{ 
-                    view: window.context.getCurrentTexture().createView(), 
-                    clearValue: [0, 0, 0, 1], 
-                    loadOp: 'clear', 
-                    storeOp: 'store' 
-                }]
+        // 1. Route to GPU
+        if (data.wgsl && window.device) {
+            const mod = window.device.createShaderModule({ code: data.wgsl });
+            window.pipeline = window.device.createRenderPipeline({
+                layout: 'auto',
+                vertex: { module: mod, entryPoint: 'vs_main' },
+                fragment: { module: mod, entryPoint: 'fs_main', targets: [{ format: window.format }] },
+                primitive: { topology: 'point-list' }
             });
-            
-            pass.setPipeline(window.pipeline);
-            pass.setBindGroup(0, window.bindGroup);
-            pass.draw(220 * 220); // Standard High-Res grid
-            pass.end();
-            window.device.queue.submit([encoder.finish()]);
+            window.bindGroup = window.device.createBindGroup({
+                layout: window.pipeline.getBindGroupLayout(0),
+                entries: [{ binding: 0, resource: { buffer: window.uniformBuffer } }]
+            });
         }
-        requestAnimationFrame(frame);
-    }
 
-    // --- THE UNIVERSAL ROUTER ---
-    async function handleInjection() {
-        const log = document.getElementById('log');
-        try {
-            const payload = await navigator.clipboard.readText();
-            
-            // 1. Check if it's a Shader (WGSL)
-            if (payload.includes("struct") || payload.includes("@vertex")) {
-                const shaderModule = window.device.createShaderModule({ code: payload });
-                window.pipeline = window.device.createRenderPipeline({
-                    layout: 'auto',
-                    vertex: { module: shaderModule, entryPoint: 'vs_main' },
-                    fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format: window.format }] },
-                    primitive: { topology: 'point-list' }
-                });
-                window.bindGroup = window.device.createBindGroup({
-                    layout: window.pipeline.getBindGroupLayout(0),
-                    entries: [{ binding: 0, resource: { buffer: window.uniformBuffer } }]
-                });
-                log.innerText = "GPU MODULE LOADED";
-                log.style.color = "var(--accent)";
-            } 
-            // 2. Check if it's JS/DOM Logic
-            else {
-                const script = document.createElement('script');
-                script.text = `(function(){ ${payload} })();`;
-                document.body.appendChild(script);
-                log.innerText = "LOGIC MODULE LOADED";
-                log.style.color = "var(--gold)";
-            }
-        } catch (err) {
-            log.innerText = "INJECTION FAILED: " + err.message;
-            log.style.color = "#ff4444";
+        // 2. Route to UI/DOM
+        if (data.html) {
+            const container = document.getElementById('render-target');
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = data.html;
+            container.appendChild(wrapper);
         }
+
+        // 3. Route to Logic
+        if (data.js) {
+            eval(data.js);
+        }
+
+        log.innerText = "PACKET_UNPACKED: SUCCESS";
+    } catch (err) {
+        log.innerText = "PACKET_ERROR: CHECK_FORMAT";
+        console.error(err);
     }
-
-    document.getElementById('injectBtn').onclick = handleInjection;
-    
-    initSystem();
-</script>
-
-</body>
-</html>
+}
