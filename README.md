@@ -13,8 +13,13 @@ This playground is a hardware-accelerated research dashboard for visualizing the
 - **Memory Alignment:** Strict 16-byte uniform buffer packing for Metal 4 compatibility.
 
 ## Mathematics
-The manifold is governed by the Functional Equation:
+The manifold is governed by the **Functional Equation**, which defines the reflection symmetry across the critical line:
+
 $$\zeta(s) = 2^s \pi^{s-1} \sin\left(\frac{\pi s}{2}\right) \Gamma(1-s) \zeta(1-s)$$
 
+The distribution is further refined via the **Tau-Symmetric Integral**:
+
+$$\Phi(s) = \int_{0}^{\infty} \frac{x^{s-1}}{e^{\tau x} - 1} dx$$
+
 ## Performance
-Designed for the **iPhone 16 Pro Max** and **i9 iMac (5700 XT)**. prioritizes dedicated GPU cores via `high-performance` power preference.
+Designed for the **iPhone 16 Pro Max** and **i9 iMac (5700 XT)**. The engine prioritizes dedicated GPU cores via `high-performance` power preference for zero-latency vertex manipulation.
