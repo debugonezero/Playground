@@ -3,169 +3,131 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebugOneZero | Unified Terminal</title>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <title>DebugOneZero | Clipboard Terminal</title>
     <style>
-        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #000; --panel: rgba(5, 12, 12, 0.9); }
-        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
-        body { margin: 0; background: var(--bg); overflow: hidden; font-family: 'JetBrains Mono', 'Menlo', monospace; color: white; height: 100dvh; }
-        canvas { position: absolute; inset: 0; z-index: 1; touch-action: none; background: #000; }
-        
-        #ui-layer {
-            position: absolute; inset: 0; z-index: 10; display: flex; 
-            flex-direction: column; justify-content: space-between; padding: 20px; pointer-events: none;
+        :root { --bg: #000; --accent: #00ffcc; --gold: #ffcc00; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            background: var(--bg); color: white; font-family: 'JetBrains Mono', monospace; 
+            height: 100dvh; display: grid; grid-template-rows: 1fr auto; overflow: hidden;
         }
 
-        .glass-panel {
-            background: var(--panel); border: 1px solid rgba(0, 255, 204, 0.2);
-            padding: 15px; border-radius: 4px; backdrop-filter: blur(15px);
-            text-align: center; pointer-events: auto; width: 100%; max-width: 500px; align-self: center;
+        #viz-container { position: relative; width: 100%; height: 100%; }
+        canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+
+        /* Control Dock */
+        #dock { 
+            background: #0a0a0a; border-top: 1px solid #222; 
+            padding: 20px; display: flex; flex-direction: column; gap: 15px; 
+            padding-bottom: env(safe-area-inset-bottom); /* iOS Notch Support */
         }
 
-        @media (orientation: landscape) {
-            #ui-layer { flex-direction: row; align-items: center; }
-            .glass-panel { width: 35%; max-width: 400px; }
+        .btn-group { display: flex; gap: 10px; }
+        button { 
+            flex: 1; padding: 15px; border-radius: 8px; border: none;
+            font-weight: bold; font-family: inherit; font-size: 0.8rem;
+            text-transform: uppercase; cursor: pointer;
         }
+        #pasteBtn { background: var(--accent); color: #000; }
+        #clearBtn { background: #1a1a1a; color: #666; border: 1px solid #333; }
 
-        .username { color: var(--gold); font-weight: bold; letter-spacing: 3px; font-size: 0.8rem; }
-        #status { font-size: 0.55rem; color: var(--glow); margin-top: 5px; text-transform: uppercase; }
-        .mjx-chtml { margin: 8px 0 !important; font-size: 0.8rem !important; color: white !important; }
+        #hud { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+        #status { font-size: 0.6rem; color: var(--accent); margin-top: 5px; }
     </style>
 </head>
 <body>
-    <canvas id="gpuCanvas"></canvas>
-    
-    <div id="ui-layer">
-        <div class="glass-panel">
-            <div class="username">@DEBUGONEZERO</div>
-            <div id="status">INITIALIZING GPU...</div>
-        </div>
 
-        <div class="glass-panel">
-            $$\zeta(s) = 2^s \pi^{s-1} \sin\left(\frac{\pi s}{2}\right) \Gamma(1-s) \zeta(1-s)$$
-            <div style="font-size: 0.5rem; color: #555; letter-spacing: 1px;">CRITICAL STRIP MANIFOLD RECONSTRUCTION</div>
-        </div>
+<div id="viz-container">
+    <canvas id="gpuCanvas"></canvas>
+    <div id="hud">
+        <div style="color:var(--gold); font-size:0.8rem; letter-spacing:2px;">@DEBUGONEZERO</div>
+        <div id="status">WEBGPU: STANDBY</div>
     </div>
+</div>
+
+<div id="dock">
+    <div id="log" style="font-size: 0.6rem; color: #444; text-align: center;">READY FOR PAYLOAD</div>
+    <div class="btn-group">
+        <button id="clearBtn">Clear GPU</button>
+        <button id="pasteBtn">Paste & Execute</button>
+    </div>
+</div>
 
 <script type="module">
-    const shaderSource = `
-    struct Uniforms {
-        time: f32,
-        freq: f32,
-        zoom: f32,
-        phase: f32,
-    };
-    @group(0) @binding(0) var<uniform> u: Uniforms;
-
-    struct VertexOutput {
-        @builtin(position) pos: vec4f,
-        @location(0) color: vec3f,
-    };
-
-    @vertex
-    fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-        let res = 200u;
-        let x = f32(idx % res) / f32(res) - 0.5;
-        let y = f32(idx / res) / f32(res) - 0.5;
-        
-        let tau = 6.2831853071;
-        let t = (y + 0.5) * u.freq + 12.0;
-        
-        let wave = sin(t * 0.45 - u.time) * cos(x * tau * log(t + u.phase));
-        let z = wave * 0.18 * u.zoom;
-
-        let perspective = 1.0 / (y + 1.5);
-        let px = (x * 3.0) * perspective;
-        let py = (z * 6.5) * perspective;
-
-        var out: VertexOutput;
-        out.pos = vec4f(px, py, y, 1.0);
-        
-        let zero = smoothstep(0.04, 0.0, abs(z));
-        // High-Vibrancy palette
-        out.color = mix(vec3f(0.0, 1.0, 0.9), vec3f(1.0, 0.8, 0.0), zero);
-        return out;
-    }
-
-    @fragment
-    fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-        return vec4f(in.color * (1.2 / in.pos.w), 1.0);
-    }
-    `;
+    let device, pipeline, bindGroup, uniformBuffer, context, format;
 
     async function init() {
-        const status = document.getElementById('status');
-        if (!navigator.gpu) {
-            status.innerText = "WEBGPU NOT SUPPORTED";
-            return;
-        }
+        if (!navigator.gpu) return;
+        const adapter = await navigator.gpu.requestAdapter();
+        device = await adapter.requestDevice();
+        const canvas = document.getElementById('gpuCanvas');
+        context = canvas.getContext('webgpu');
+        format = navigator.gpu.getPreferredCanvasFormat();
+        
+        const dpr = Math.min(window.devicePixelRatio, 2);
+        canvas.width = canvas.clientWidth * dpr;
+        canvas.height = canvas.clientHeight * dpr;
 
+        context.configure({ device, format, alphaMode: 'premultiplied' });
+        uniformBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        
+        document.getElementById('status').innerText = "GPU: READY";
+        requestAnimationFrame(frame);
+    }
+
+    async function executeFromClipboard() {
+        const log = document.getElementById('log');
         try {
-            const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
-            const device = await adapter.requestDevice();
-            const canvas = document.getElementById('gpuCanvas');
-            const context = canvas.getContext('webgpu');
+            const code = await navigator.clipboard.readText();
+            const shaderModule = device.createShaderModule({ code });
             
-            const format = navigator.gpu.getPreferredCanvasFormat();
-            const canP3 = window.matchMedia("(color-gamut: p3)").matches;
-            
-            // Scaled resolution for mobile stability
-            const dpr = Math.min(window.devicePixelRatio, 2); 
-            canvas.width = window.innerWidth * dpr;
-            canvas.height = window.innerHeight * dpr;
-
-            context.configure({ 
-                device, 
-                format, 
-                colorSpace: canP3 ? 'display-p3' : 'srgb',
-                alphaMode: 'premultiplied' 
-            });
-
-            const pipeline = device.createRenderPipeline({
+            pipeline = device.createRenderPipeline({
                 layout: 'auto',
-                vertex: { module: device.createShaderModule({ code: shaderSource }), entryPoint: 'vs_main' },
-                fragment: { module: device.createShaderModule({ code: shaderSource }), entryPoint: 'fs_main', targets: [{ format }] },
+                vertex: { module: shaderModule, entryPoint: 'vs_main' },
+                fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
                 primitive: { topology: 'point-list' }
             });
 
-            const uniformBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-            const bindGroup = device.createBindGroup({
+            bindGroup = device.createBindGroup({
                 layout: pipeline.getBindGroupLayout(0),
                 entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
             });
 
-            status.innerText = `ENGINE: ACTIVE | ${canP3 ? 'P3' : 'sRGB'} | 120Hz`;
-
-            function render(time) {
-                const data = new Float32Array([time * 0.001, 50.0, 1.0, 2.0]);
-                device.queue.writeBuffer(uniformBuffer, 0, data);
-
-                const encoder = device.createCommandEncoder();
-                const pass = encoder.beginRenderPass({
-                    colorAttachments: [{ 
-                        view: context.getCurrentTexture().createView(), 
-                        clearValue: [0, 0, 0, 1], 
-                        loadOp: 'clear', 
-                        storeOp: 'store' 
-                    }]
-                });
-                
-                pass.setPipeline(pipeline);
-                pass.setBindGroup(0, bindGroup);
-                pass.draw(200 * 200);
-                pass.end();
-                device.queue.submit([encoder.finish()]);
-                requestAnimationFrame(render);
-            }
-            requestAnimationFrame(render);
-
+            log.innerText = "SUCCESS: SHADER COMPILED";
+            log.style.color = "#00ffcc";
         } catch (err) {
-            status.innerText = "GPU ERROR: CHECK CONSOLE";
+            log.innerText = "ERROR: INVALID SHADER PAYLOAD";
+            log.style.color = "#ff4444";
             console.error(err);
         }
     }
 
+    function frame(time) {
+        if (pipeline) {
+            device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([time * 0.001, 55.0, 1.0, 2.0]));
+            const encoder = device.createCommandEncoder();
+            const pass = encoder.beginRenderPass({
+                colorAttachments: [{ 
+                    view: context.getCurrentTexture().createView(), 
+                    clearValue: [0, 0, 0, 1], 
+                    loadOp: 'clear', 
+                    storeOp: 'store' 
+                }]
+            });
+            pass.setPipeline(pipeline);
+            pass.setBindGroup(0, bindGroup);
+            pass.draw(200 * 200);
+            pass.end();
+            device.queue.submit([encoder.finish()]);
+        }
+        requestAnimationFrame(frame);
+    }
+
+    document.getElementById('pasteBtn').onclick = executeFromClipboard;
+    document.getElementById('clearBtn').onclick = () => { pipeline = null; document.getElementById('log').innerText = "GPU CLEARED"; };
+    
     init();
 </script>
+
 </body>
 </html>
