@@ -3,24 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebugOneZero | WebGPU Engine</title>
+    <title>DebugOneZero | Riemann Manifold v2.1</title>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        canvas { display: block; width: 100vw; height: 100vh; }
-        #ui {
+        :root { --glow: #00ffcc; --bg: #050a0a; --panel: rgba(0, 30, 30, 0.9); }
+        body { margin: 0; background: var(--bg); overflow: hidden; font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; }
+        canvas { display: block; width: 100vw; height: 100vh; filter: contrast(1.1) brightness(1.1); }
+
+        /* Enhanced HUD */
+        #hud {
             position: absolute; top: 20px; left: 20px;
-            color: #00ffcc; background: rgba(0, 20, 20, 0.85);
-            padding: 15px; border: 1px solid #00ffcc;
-            pointer-events: none; text-transform: uppercase; line-height: 1.5;
+            color: var(--glow); background: var(--panel);
+            padding: 20px; border: 1px solid var(--glow);
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.2);
+            pointer-events: none; border-radius: 4px;
+            backdrop-filter: blur(10px); z-index: 10;
+        }
+
+        .formula-card {
+            position: absolute; bottom: 30px; right: 30px;
+            background: var(--panel); color: #fff;
+            padding: 15px; border-left: 4px solid var(--glow);
+            font-size: 0.9rem; border-radius: 4px; z-index: 10;
+        }
+
+        .label { color: #555; font-size: 0.7rem; letter-spacing: 2px; margin-bottom: 5px; }
+        .data-line { font-size: 1.1rem; text-shadow: 0 0 5px var(--glow); margin-bottom: 10px; }
+        
+        #glitch-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 2px);
+            pointer-events: none; z-index: 5;
         }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <b>SYSTEM:</b> WEBGPU 1.1 LIVE<br>
-        <b>ENGINE:</b> WGSL / METAL 3.2<br>
-        <b>STATUS:</b> SIGNAL DETECTED
+    <div id="glitch-overlay"></div>
+
+    <div id="hud">
+        <div class="label">COORDINATE SYSTEM</div>
+        <div class="data-line">CRITICAL STRIP: σ = 0.5</div>
+        <div class="label">HARDWARE ACCELERATION</div>
+        <div class="data-line" id="fps-display">WEBGPU / METAL 3.2</div>
+        <div class="label">ZERO DISCOVERY</div>
+        <div class="data-line">t ≈ 14.134, 21.022...</div>
     </div>
+
+    <div class="formula-card">
+        <div class="label">ACTIVE OPERATOR</div>
+        $$\zeta(s) = \sum_{n=1}^{\infty} \frac{1}{n^s}$$
+        <div style="font-size: 0.7rem; color: var(--glow); margin-top: 10px;">
+            Riemann-Siegel Z-Function Harmonic Simulation
+        </div>
+    </div>
+
     <canvas id="gpuCanvas"></canvas>
 
 <script type="module">
@@ -29,112 +65,112 @@
             time: f32,
             width: f32,
             height: f32,
-            padding: f32, // CRITICAL: Forces 16-byte alignment for Safari
+            padding: f32,
         };
         @group(0) @binding(0) var<uniform> u: Uniforms;
 
         struct VertexOutput {
             @builtin(position) pos: vec4f,
             @location(0) color: vec3f,
+            @location(1) intensity: f32,
         };
 
         @vertex
         fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-            let res = 128u; 
+            let res = 150u; 
             let x = f32(idx % res) / f32(res) - 0.5;
             let y = f32(idx / res) / f32(res) - 0.5;
             
-            // Zeta Oscillation Formula
-            let t = (y + 0.5) * 50.0 + 10.0;
-            let wave = sin(t * 0.5 - u.time) * cos(x * 10.0);
+            // The "Tau" Frequency 
+            let t = (y + 0.5) * 60.0 + 5.0;
+            let wave = sin(t * 0.4 - u.time) * cos(x * 12.0);
             
-            // 3D Perspective Projection (Simulated)
-            let z_depth = (y + 1.0);
-            let x_proj = x * 2.0 / z_depth;
-            let y_proj = (wave * 0.4) / z_depth;
+            // Detection of non-trivial zeros (simulated dips)
+            let zero1 = 1.0 / (1.0 + pow(abs(t - 14.134) * 10.0, 2.0));
+            let zero2 = 1.0 / (1.0 + pow(abs(t - 21.022) * 10.0, 2.0));
+            let dip = (zero1 + zero2) * 0.3;
+
+            let z = (wave * 0.15) - dip;
+
+            // Perspective Projection Matrix simulation
+            let perspective = 1.0 / (y + 1.2);
+            let px = x * 2.2 * perspective;
+            let py = (z - 0.2) * 3.5 * perspective;
 
             var out: VertexOutput;
-            out.pos = vec4f(x_proj, y_proj, 0.0, 1.0);
-            out.color = vec3f(0.0, 1.0, 0.85) * (0.7 + 0.3 * wave);
+            out.pos = vec4f(px, py, y, 1.0);
+            
+            // Dynamic coloring: Cyan standard, Red on Zero-Crossing
+            let pulse = sin(u.time * 2.0 + t * 0.1);
+            let isZero = smoothstep(0.1, 0.0, abs(z));
+            out.color = mix(vec3f(0.0, 1.0, 0.8), vec3f(1.0, 0.2, 0.2), isZero * (0.5 + 0.5 * pulse));
+            out.intensity = perspective;
             return out;
         }
 
         @fragment
         fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-            return vec4f(in.color, 1.0);
+            let glow = in.intensity * 0.8;
+            return vec4f(in.color * glow, 1.0);
         }
     `;
 
     async function init() {
-        if (!navigator.gpu) {
-            document.body.innerHTML = "<h1 style='color:red; padding:50px;'>WebGPU Not Detected. Disable Low Power Mode.</h1>";
-            return;
-        }
-
+        if (!navigator.gpu) return;
         const adapter = await navigator.gpu.requestAdapter();
         const device = await adapter.requestDevice();
         const canvas = document.getElementById('gpuCanvas');
         const context = canvas.getContext('webgpu');
         const format = navigator.gpu.getPreferredCanvasFormat();
 
-        context.configure({ 
-            device, 
-            format, 
-            alphaMode: 'premultiplied' // Essential for Safari compositing
-        });
+        context.configure({ device, format, alphaMode: 'premultiplied' });
 
-        const shaderModule = device.createShaderModule({ code: shaderCode });
         const pipeline = device.createRenderPipeline({
             layout: 'auto',
-            vertex: { module: shaderModule, entryPoint: 'vs_main' },
-            fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
+            vertex: { module: device.createShaderModule({ code: shaderCode }), entryPoint: 'vs_main' },
+            fragment: { module: shaderModule(), entryPoint: 'fs_main', targets: [{ format }] },
             primitive: { topology: 'point-list' }
         });
 
-        // Setup Uniform Buffer (Exactly 16 bytes)
-        const uniformBuffer = device.createBuffer({
-            size: 16,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
+        function shaderModule() { return device.createShaderModule({ code: shaderCode }); }
 
+        const uniformBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         const bindGroup = device.createBindGroup({
             layout: pipeline.getBindGroupLayout(0),
-            entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+            entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
         });
 
         function frame(time) {
-            // Buffer must be exactly 4 floats (16 bytes)
-            const uniformData = new Float32Array([time * 0.001, canvas.width, canvas.height, 0]);
-            device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+            const data = new Float32Array([time * 0.001, canvas.width, canvas.height, 0]);
+            device.queue.writeBuffer(uniformBuffer, 0, data);
 
             const commandEncoder = device.createCommandEncoder();
             const pass = commandEncoder.beginRenderPass({
                 colorAttachments: [{
                     view: context.getCurrentTexture().createView(),
-                    clearValue: [0, 0, 0, 1],
+                    clearValue: [0.02, 0.04, 0.04, 1],
                     loadOp: 'clear', storeOp: 'store',
                 }]
             });
 
             pass.setPipeline(pipeline);
             pass.setBindGroup(0, bindGroup);
-            pass.draw(128 * 128); // 16k Points
+            pass.draw(150 * 150); 
             pass.end();
-
             device.queue.submit([commandEncoder.finish()]);
             requestAnimationFrame(frame);
         }
 
-        const resize = () => {
+        const resizer = () => {
             canvas.width = window.innerWidth * window.devicePixelRatio;
             canvas.height = window.innerHeight * window.devicePixelRatio;
         };
-        window.addEventListener('resize', resize);
-        resize();
+        window.addEventListener('resize', resizer);
+        resizer();
         requestAnimationFrame(frame);
     }
 
-    init().catch(err => alert("GPU Init Error: " + err));
+    init();
 </script>
 </body>
 </html>
