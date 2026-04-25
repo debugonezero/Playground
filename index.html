@@ -3,157 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebugOneZero | P3 Quantum Terminal</title>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <title>DebugOneZero | Modular Manifold</title>
     <style>
-        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #000505; --panel: rgba(5, 10, 10, 0.9); }
-        body { 
-            margin: 0; background: var(--bg); overflow: hidden; 
-            font-family: 'JetBrains Mono', monospace; color: white; height: 100dvh; 
-        }
-        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-
-        #ui-container {
-            position: absolute; inset: 0; z-index: 10;
-            display: flex; flex-direction: column; justify-content: space-between;
-            padding: 20px; pointer-events: none;
-        }
-
-        .glass-panel {
-            background: var(--panel); border: 1px solid rgba(0, 255, 204, 0.2);
-            padding: 15px; border-radius: 4px; backdrop-filter: blur(15px);
-            text-align: center; pointer-events: auto;
-        }
-
-        .username { color: var(--gold); font-weight: bold; letter-spacing: 3px; font-size: 0.8rem; }
-        .mjx-chtml { margin: 5px 0 !important; font-size: 0.8rem !important; }
+        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #000; }
+        body { margin: 0; background: var(--bg); overflow: hidden; font-family: 'JetBrains Mono', monospace; color: white; }
+        canvas { position: absolute; inset: 0; z-index: 1; touch-action: none; }
         
-        /* Interactive Controller */
-        #controls {
-            position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
-            display: flex; flex-direction: column; gap: 15px; pointer-events: auto;
+        /* Floating HUD */
+        #hud {
+            position: absolute; top: 20px; left: 20px; z-index: 10;
+            background: rgba(0, 10, 10, 0.8); padding: 15px;
+            border: 1px solid var(--glow); backdrop-filter: blur(10px);
+            pointer-events: none;
         }
-        input[type=range] { writing-mode: bt-lr; appearance: slider-vertical; width: 8px; height: 150px; background: #111; }
+        #footer {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 10; width: 90%; text-align: center; pointer-events: none;
+        }
+        .username { color: var(--gold); font-size: 0.7rem; letter-spacing: 2px; }
     </style>
 </head>
 <body>
     <canvas id="gpuCanvas"></canvas>
-
-    <div id="ui-container">
-        <div id="header" class="glass-panel">
-            <div class="username">@DEBUGONEZERO</div>
-            <div style="font-size: 0.6rem; color: var(--glow);">GAMUT: DISPLAY-P3 | MODE: INTERACTIVE</div>
-        </div>
-
-        <div id="controls">
-            <div style="font-size: 0.5rem; color: var(--gold);">FREQ</div>
-            <input type="range" id="freqRange" min="1" max="100" value="45">
-            <div style="font-size: 0.5rem; color: var(--gold);">TIME</div>
-            <input type="range" id="timeRange" min="0" max="200" value="100">
-        </div>
-
-        <div id="footer" class="glass-panel">
-            $$\zeta(s) = 2^s \pi^{s-1} \sin\left(\frac{\pi s}{2}\right) \Gamma(1-s) \zeta(1-s)$$
-            <div style="font-size: 0.5rem; color: #444;">DRAG TO PAN | PINCH TO ZOOM</div>
-        </div>
+    
+    <div id="hud">
+        <div class="username">@DEBUGONEZERO</div>
+        <div id="status" style="font-size: 0.6rem; color: var(--glow);">GPU: INITIALIZING...</div>
     </div>
 
-<script type="module">
-    const shaderCode = `
-        struct Uniforms {
-            time: f32,
-            freq: f32,
-            zoom: f32,
-            pan: vec2f,
-        };
-        @group(0) @binding(0) var<uniform> u: Uniforms;
+    <div id="footer">
+        <div id="math-display"></div>
+    </div>
 
-        struct VertexOutput {
-            @builtin(position) pos: vec4f,
-            @location(0) color: vec3f,
-        };
-
-        @vertex
-        fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-            let res = 250u; // Massive grid density for A18 Pro
-            let x = f32(idx % res) / f32(res) - 0.5;
-            let y = f32(idx / res) / f32(res) - 0.5;
-            
-            let tau = 6.2831853071;
-            let t = (y + 0.5) * u.freq + 5.0;
-            
-            let harmonic = sin(t * 0.4 - u.time) * cos((x + u.pan.x) * tau * log(t + 2.0));
-            let z = (harmonic * 0.2 * u.zoom);
-
-            let perspective = 1.0 / (y + 1.4);
-            let px = (x * 2.8) * perspective;
-            let py = ((z + u.pan.y) * 5.0) * perspective;
-
-            var out: VertexOutput;
-            out.pos = vec4f(px, py, y, 1.0);
-            
-            // P3 Color Gamut Mapping: Intense Cyber Teal & Pure Gold
-            let zero = smoothstep(0.03, 0.0, abs(z));
-            out.color = mix(vec3f(0.0, 1.2, 1.0), vec3f(1.5, 1.0, 0.0), zero); // Over-saturated for P3
-            return out;
-        }
-
-        @fragment
-        fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-            return vec4f(in.color * (1.0 / in.pos.w), 1.0);
-        }
-    `;
-
-    async function init() {
-        const adapter = await navigator.gpu.requestAdapter();
-        const device = await adapter.requestDevice();
-        const canvas = document.getElementById('gpuCanvas');
-        const context = canvas.getContext('webgpu');
-        
-        // UNLOCK DISPLAY-P3
-        const format = 'display-p3'; 
-        context.configure({ device, format, colorSpace: 'display-p3', alphaMode: 'premultiplied' });
-
-        const pipeline = device.createRenderPipeline({
-            layout: 'auto',
-            vertex: { module: device.createShaderModule({ code: shaderCode }), entryPoint: 'vs_main' },
-            fragment: { module: device.createShaderModule({ code: shaderCode }), entryPoint: 'fs_main', targets: [{ format }] },
-            primitive: { topology: 'point-list' }
-        });
-
-        const uniformBuffer = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        const bindGroup = device.createBindGroup({
-            layout: pipeline.getBindGroupLayout(0),
-            entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
-        });
-
-        let pan = { x: 0, y: 0 };
-        let zoom = 1.0;
-        canvas.onpointermove = (e) => { if(e.buttons) { pan.x += e.movementX*0.001; pan.y -= e.movementY*0.001; } };
-
-        function frame(time) {
-            const freq = document.getElementById('freqRange').value;
-            const timeMult = document.getElementById('timeRange').value * 0.01;
-            
-            const data = new Float32Array([time * 0.001 * timeMult, freq, zoom, 0, pan.x, pan.y, 0, 0]);
-            device.queue.writeBuffer(uniformBuffer, 0, data);
-
-            const encoder = device.createCommandEncoder();
-            const pass = encoder.beginRenderPass({
-                colorAttachments: [{ view: context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 1], loadOp: 'clear', storeOp: 'store' }]
-            });
-            pass.setPipeline(pipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.draw(250 * 250); // 62,500 points
-            pass.end();
-            device.queue.submit([encoder.finish()]);
-            requestAnimationFrame(frame);
-        }
-        window.onresize = () => { canvas.width = window.innerWidth * 2; canvas.height = window.innerHeight * 2; };
-        window.onresize();
-        requestAnimationFrame(frame);
-    }
-    init();
-</script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html>
