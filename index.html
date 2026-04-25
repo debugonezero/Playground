@@ -2,83 +2,117 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zeta WebGPU Engine</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zeta WebGPU Manifold</title>
     <style>
-        body { margin: 0; background: #000; color: #00ffcc; font-family: monospace; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: monospace; }
         canvas { display: block; width: 100vw; height: 100vh; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #00ffcc; background: rgba(0,20,20,0.8); padding: 10px; border: 1px solid #00ffcc; pointer-events: none; }
     </style>
 </head>
 <body>
+    <div id="ui">SYSTEM: WEBGPU LIVE<br>ENGINE: WGSL / METAL<br>DOMAIN: CRITICAL LINE (s=0.5)</div>
     <canvas id="gpuCanvas"></canvas>
 
     <script type="module">
-        // 1. SHADER SOURCE (The WGSL "Source Code")
         const shaderCode = `
+            struct Uniforms {
+                time: f32,
+                resolution: vec2f,
+            };
+            @group(0) @binding(0) var<uniform> u: Uniforms;
+
+            struct VertexOutput {
+                @builtin(position) pos: vec4f,
+                @location(0) color: vec3f,
+            };
+
             @vertex
-            fn vs_main(@builtin(vertex_index) idx: u32) -> @builtin(position) vec4f {
-                var pos = array<vec2f, 3>(
-                    vec2f(0.0, 0.5),
-                    vec2f(-0.5, -0.5),
-                    vec2f(0.5, -0.5)
-                );
-                return vec4f(pos[idx], 0.0, 1.0);
+            fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
+                let res = 128u; // Grid resolution
+                let x = f32(idx % res) / f32(res) - 0.5;
+                let y = f32(idx / res) / f32(res);
+                
+                // Riemann-inspired wave math
+                let t = y * 50.0 + 10.0;
+                let sigma = x + 0.5;
+                let wave = sin(t * 0.5 - u.time) * cos(sigma * 10.0);
+                
+                // Gravity effect near the first zero (14.134)
+                let distToZero = abs(t - 14.134725);
+                let z = (wave * 0.1) + (0.02 / (0.1 + distToZero));
+
+                var out: VertexOutput;
+                let aspect = u.resolution.x / u.resolution.y;
+                
+                // Projection math (Technician focus)
+                out.pos = vec4f(x * 1.5, z * 2.0, y - 1.0, 1.2 - y);
+                out.color = vec3f(0.0, 0.8, 1.0) * (0.6 + 0.4 * sin(t + u.time));
+                return out;
             }
 
             @fragment
-            fn fs_main() -> @location(0) vec4f {
-                return vec4f(0.0, 1.0, 0.8, 1.0); // Cyan
+            fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+                return vec4f(in.color, 1.0);
             }
         `;
 
         async function init() {
-            if (!navigator.gpu) {
-                alert("WebGPU not supported. Check Safari Settings > Advanced.");
-                return;
-            }
-
             const adapter = await navigator.gpu.requestAdapter();
             const device = await adapter.requestDevice();
-            
             const canvas = document.getElementById('gpuCanvas');
             const context = canvas.getContext('webgpu');
             const format = navigator.gpu.getPreferredCanvasFormat();
 
             context.configure({ device, format });
 
-            // 2. CREATE PIPELINE (The iMac/iPhone GPU bridge)
+            const shaderModule = device.createShaderModule({ code: shaderCode });
             const pipeline = device.createRenderPipeline({
                 layout: 'auto',
-                vertex: {
-                    module: device.createShaderModule({ code: shaderCode }),
-                    entryPoint: 'vs_main',
-                },
-                fragment: {
-                    module: device.createShaderModule({ code: shaderCode }),
-                    entryPoint: 'fs_main',
-                    targets: [{ format }],
-                },
+                vertex: { module: shaderModule, entryPoint: 'vs_main' },
+                fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
+                primitive: { topology: 'point-list' }
             });
 
-            function frame() {
+            // Uniform buffer (16-byte alignment required)
+            const uniformBuffer = device.createBuffer({
+                size: 16,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            });
+
+            const bindGroup = device.createBindGroup({
+                layout: pipeline.getBindGroupLayout(0),
+                entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+            });
+
+            function frame(time) {
+                // Update Uniforms
+                const uniformData = new Float32Array([time * 0.001, 0, canvas.width, canvas.height]);
+                device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+
                 const commandEncoder = device.createCommandEncoder();
-                const view = context.getCurrentTexture().createView();
-                const renderPass = commandEncoder.beginRenderPass({
+                const pass = commandEncoder.beginRenderPass({
                     colorAttachments: [{
-                        view,
+                        view: context.getCurrentTexture().createView(),
                         clearValue: [0, 0, 0, 1],
-                        loadOp: 'clear',
-                        storeOp: 'store',
-                    }],
+                        loadOp: 'clear', storeOp: 'store',
+                    }]
                 });
 
-                renderPass.setPipeline(pipeline);
-                renderPass.draw(3);
-                renderPass.end();
+                pass.setPipeline(pipeline);
+                pass.setBindGroup(0, bindGroup);
+                pass.draw(128 * 128); // Drawing the full 16,384 point manifold
+                pass.end();
 
                 device.queue.submit([commandEncoder.finish()]);
                 requestAnimationFrame(frame);
             }
+
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth * window.devicePixelRatio;
+                canvas.height = window.innerHeight * window.devicePixelRatio;
+            });
+            window.dispatchEvent(new Event('resize'));
             requestAnimationFrame(frame);
         }
 
