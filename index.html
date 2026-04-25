@@ -3,78 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebugOneZero | High-Ref Terminal</title>
+    <title>DebugOneZero | P3 Quantum Terminal</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
-        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #020505; --panel: rgba(5, 10, 10, 0.9); }
-        
-        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #000505; --panel: rgba(5, 10, 10, 0.9); }
         body { 
             margin: 0; background: var(--bg); overflow: hidden; 
-            font-family: 'JetBrains Mono', 'Menlo', monospace; 
-            color: white; height: 100dvh; width: 100vw;
+            font-family: 'JetBrains Mono', monospace; color: white; height: 100dvh; 
         }
-
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
 
-        /* ORIENTATION LOGIC */
         #ui-container {
             position: absolute; inset: 0; z-index: 10;
-            display: flex; flex-direction: column; 
+            display: flex; flex-direction: column; justify-content: space-between;
             padding: 20px; pointer-events: none;
-        }
-
-        /* Portrait Mode: Stacked */
-        @media (orientation: portrait) {
-            #ui-container { justify-content: space-between; align-items: center; }
-            #header-hud { width: 100%; max-width: 450px; }
-            #footer-formula { width: 100%; max-width: 450px; }
-        }
-
-        /* Landscape Mode: Side-by-Side */
-        @media (orientation: landscape) {
-            #ui-container { flex-direction: row; justify-content: space-between; align-items: center; }
-            #header-hud { width: 30%; max-width: 300px; height: auto; }
-            #footer-formula { width: 40%; max-width: 500px; height: auto; }
         }
 
         .glass-panel {
             background: var(--panel); border: 1px solid rgba(0, 255, 204, 0.2);
-            padding: 15px; border-radius: 4px; backdrop-filter: blur(12px);
+            padding: 15px; border-radius: 4px; backdrop-filter: blur(15px);
             text-align: center; pointer-events: auto;
         }
 
-        .username { color: var(--gold); font-weight: bold; letter-spacing: 3px; font-size: 0.8rem; margin-bottom: 5px; }
-        .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.55rem; color: var(--glow); margin-top: 10px; }
-        
+        .username { color: var(--gold); font-weight: bold; letter-spacing: 3px; font-size: 0.8rem; }
         .mjx-chtml { margin: 5px 0 !important; font-size: 0.8rem !important; }
-        .formula-caption { font-size: 0.5rem; color: #444; letter-spacing: 1px; margin-top: 10px; }
-
-        #scanline {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(to bottom, transparent 50%, rgba(0, 255, 204, 0.01) 50%);
-            background-size: 100% 2px; pointer-events: none; z-index: 5;
+        
+        /* Interactive Controller */
+        #controls {
+            position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 15px; pointer-events: auto;
         }
+        input[type=range] { writing-mode: bt-lr; appearance: slider-vertical; width: 8px; height: 150px; background: #111; }
     </style>
 </head>
 <body>
-    <div id="scanline"></div>
     <canvas id="gpuCanvas"></canvas>
 
     <div id="ui-container">
-        <div id="header-hud" class="glass-panel">
+        <div id="header" class="glass-panel">
             <div class="username">@DEBUGONEZERO</div>
-            <div style="font-size: 0.6rem; color: #444;">120Hz OPTIMIZED</div>
-            <div class="stats-row">
-                <div style="border: 1px solid #111; padding: 4px;">σ: 0.5</div>
-                <div style="border: 1px solid #111; padding: 4px;">SYNC: METAL 3</div>
-            </div>
+            <div style="font-size: 0.6rem; color: var(--glow);">GAMUT: DISPLAY-P3 | MODE: INTERACTIVE</div>
         </div>
 
-        <div id="footer-formula" class="glass-panel">
+        <div id="controls">
+            <div style="font-size: 0.5rem; color: var(--gold);">FREQ</div>
+            <input type="range" id="freqRange" min="1" max="100" value="45">
+            <div style="font-size: 0.5rem; color: var(--gold);">TIME</div>
+            <input type="range" id="timeRange" min="0" max="200" value="100">
+        </div>
+
+        <div id="footer" class="glass-panel">
             $$\zeta(s) = 2^s \pi^{s-1} \sin\left(\frac{\pi s}{2}\right) \Gamma(1-s) \zeta(1-s)$$
-            $$\Phi(s) = \int_{0}^{\infty} \frac{x^{s-1}}{e^{\tau x} - 1} dx$$
-            <div class="formula-caption">TAU-SYMMETRIC MANIFOLD RECONSTRUCTION</div>
+            <div style="font-size: 0.5rem; color: #444;">DRAG TO PAN | PINCH TO ZOOM</div>
         </div>
     </div>
 
@@ -82,68 +62,57 @@
     const shaderCode = `
         struct Uniforms {
             time: f32,
-            width: f32,
-            height: f32,
-            padding: f32,
+            freq: f32,
+            zoom: f32,
+            pan: vec2f,
         };
         @group(0) @binding(0) var<uniform> u: Uniforms;
 
         struct VertexOutput {
             @builtin(position) pos: vec4f,
             @location(0) color: vec3f,
-            @location(1) glow: f32,
         };
 
         @vertex
         fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-            let res = 200u; // HIGH DENSITY GRID (40,000 points)
-            let x = f32(idx % res) / f32(res) - 0.5; 
+            let res = 250u; // Massive grid density for A18 Pro
+            let x = f32(idx % res) / f32(res) - 0.5;
             let y = f32(idx / res) / f32(res) - 0.5;
             
             let tau = 6.2831853071;
-            let t = (y + 0.5) * 55.0 + 5.0;
+            let t = (y + 0.5) * u.freq + 5.0;
             
-            // Refined Physics-Based Oscillation
-            let harmonic = sin(t * 0.45 - u.time) * cos(x * tau * log(t + 2.0));
-            
-            // Zero-Crossing Gravity Wells
-            let zeros = array<f32, 4>(14.134, 21.022, 25.011, 30.424);
-            var z_sum = 0.0;
-            for(var i = 0; i < 4; i++) {
-                z_sum += 0.03 / (0.05 + pow(t - zeros[i], 2.0));
-            }
+            let harmonic = sin(t * 0.4 - u.time) * cos((x + u.pan.x) * tau * log(t + 2.0));
+            let z = (harmonic * 0.2 * u.zoom);
 
-            let z = (harmonic * 0.2) - z_sum;
-
-            // Fluid Projection (Pro-GPU Logic)
             let perspective = 1.0 / (y + 1.4);
             let px = (x * 2.8) * perspective;
-            let py = (z * 5.0) * perspective;
+            let py = ((z + u.pan.y) * 5.0) * perspective;
 
             var out: VertexOutput;
             out.pos = vec4f(px, py, y, 1.0);
             
-            let zeroIntensity = smoothstep(0.04, 0.0, abs(z));
-            out.color = mix(vec3f(0.0, 1.0, 0.8), vec3f(1.0, 0.8, 0.0), zeroIntensity);
-            out.glow = perspective * (1.0 + zeroIntensity);
+            // P3 Color Gamut Mapping: Intense Cyber Teal & Pure Gold
+            let zero = smoothstep(0.03, 0.0, abs(z));
+            out.color = mix(vec3f(0.0, 1.2, 1.0), vec3f(1.5, 1.0, 0.0), zero); // Over-saturated for P3
             return out;
         }
 
         @fragment
         fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-            return vec4f(in.color * in.glow, 1.0);
+            return vec4f(in.color * (1.0 / in.pos.w), 1.0);
         }
     `;
 
     async function init() {
-        if (!navigator.gpu) return;
-        const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+        const adapter = await navigator.gpu.requestAdapter();
         const device = await adapter.requestDevice();
         const canvas = document.getElementById('gpuCanvas');
         const context = canvas.getContext('webgpu');
-        const format = navigator.gpu.getPreferredCanvasFormat();
-
-        context.configure({ device, format, alphaMode: 'premultiplied' });
+        
+        // UNLOCK DISPLAY-P3
+        const format = 'display-p3'; 
+        context.configure({ device, format, colorSpace: 'display-p3', alphaMode: 'premultiplied' });
 
         const pipeline = device.createRenderPipeline({
             layout: 'auto',
@@ -152,33 +121,36 @@
             primitive: { topology: 'point-list' }
         });
 
-        const uniformBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        const uniformBuffer = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         const bindGroup = device.createBindGroup({
             layout: pipeline.getBindGroupLayout(0),
             entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
         });
 
-        // Frame callback with high-refresh support
+        let pan = { x: 0, y: 0 };
+        let zoom = 1.0;
+        canvas.onpointermove = (e) => { if(e.buttons) { pan.x += e.movementX*0.001; pan.y -= e.movementY*0.001; } };
+
         function frame(time) {
-            device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([time * 0.001, canvas.width, canvas.height, 0]));
+            const freq = document.getElementById('freqRange').value;
+            const timeMult = document.getElementById('timeRange').value * 0.01;
+            
+            const data = new Float32Array([time * 0.001 * timeMult, freq, zoom, 0, pan.x, pan.y, 0, 0]);
+            device.queue.writeBuffer(uniformBuffer, 0, data);
+
             const encoder = device.createCommandEncoder();
             const pass = encoder.beginRenderPass({
-                colorAttachments: [{ view: context.getCurrentTexture().createView(), clearValue: [0, 0.01, 0.01, 1], loadOp: 'clear', storeOp: 'store' }]
+                colorAttachments: [{ view: context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 1], loadOp: 'clear', storeOp: 'store' }]
             });
             pass.setPipeline(pipeline);
             pass.setBindGroup(0, bindGroup);
-            pass.draw(200 * 200);
+            pass.draw(250 * 250); // 62,500 points
             pass.end();
             device.queue.submit([encoder.finish()]);
             requestAnimationFrame(frame);
         }
-
-        const resize = () => {
-            canvas.width = window.innerWidth * window.devicePixelRatio;
-            canvas.height = window.innerHeight * window.devicePixelRatio;
-        };
-        window.addEventListener('resize', resize);
-        resize();
+        window.onresize = () => { canvas.width = window.innerWidth * 2; canvas.height = window.innerHeight * 2; };
+        window.onresize();
         requestAnimationFrame(frame);
     }
     init();
