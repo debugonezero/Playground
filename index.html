@@ -3,61 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebugOneZero | Riemann Manifold v2.1</title>
+    <title>DebugOneZero | Riemann Manifold</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
-        :root { --glow: #00ffcc; --bg: #050a0a; --panel: rgba(0, 30, 30, 0.9); }
-        body { margin: 0; background: var(--bg); overflow: hidden; font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; }
-        canvas { display: block; width: 100vw; height: 100vh; filter: contrast(1.1) brightness(1.1); }
-
-        /* Enhanced HUD */
-        #hud {
-            position: absolute; top: 20px; left: 20px;
-            color: var(--glow); background: var(--panel);
-            padding: 20px; border: 1px solid var(--glow);
-            box-shadow: 0 0 15px rgba(0, 255, 204, 0.2);
-            pointer-events: none; border-radius: 4px;
-            backdrop-filter: blur(10px); z-index: 10;
-        }
-
-        .formula-card {
-            position: absolute; bottom: 30px; right: 30px;
-            background: var(--panel); color: #fff;
-            padding: 15px; border-left: 4px solid var(--glow);
-            font-size: 0.9rem; border-radius: 4px; z-index: 10;
-        }
-
-        .label { color: #555; font-size: 0.7rem; letter-spacing: 2px; margin-bottom: 5px; }
-        .data-line { font-size: 1.1rem; text-shadow: 0 0 5px var(--glow); margin-bottom: 10px; }
+        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #050505; --panel: rgba(10, 10, 10, 0.9); }
         
-        #glitch-overlay {
+        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+        body { 
+            margin: 0; background: var(--bg); overflow: hidden; 
+            font-family: 'JetBrains Mono', 'Menlo', 'Fira Code', monospace; 
+            color: white; display: flex; flex-direction: column; align-items: center;
+        }
+
+        canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+
+        /* Responsive UI Overlay */
+        #ui-layer {
+            position: relative; z-index: 10; width: 100%; max-width: 600px;
+            height: 100vh; display: flex; flex-direction: column;
+            justify-content: space-between; padding: 25px; pointer-events: none;
+        }
+
+        .glass-panel {
+            background: var(--panel); border: 1px solid rgba(0, 255, 204, 0.3);
+            backdrop-filter: blur(12px); padding: 20px; border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); pointer-events: auto;
+        }
+
+        .header { text-align: center; border-bottom: 1px solid var(--glow); padding-bottom: 10px; margin-bottom: 15px; }
+        .username { color: var(--gold); font-weight: bold; letter-spacing: 2px; font-size: 0.8rem; }
+        
+        .formula-container { font-size: 0.9rem; line-height: 1.6; text-align: center; }
+        .mjx-chtml { margin: 10px 0 !important; color: white !important; }
+
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.7rem; color: var(--glow); }
+        .stat-box { border: 1px solid rgba(0, 255, 204, 0.1); padding: 8px; text-align: center; }
+
+        #glitch {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 2px);
+            background: repeating-linear-gradient(0deg, rgba(0,255,204,0.03) 0px, transparent 2px);
             pointer-events: none; z-index: 5;
         }
     </style>
 </head>
 <body>
-    <div id="glitch-overlay"></div>
+    <div id="glitch"></div>
+    <canvas id="gpuCanvas"></canvas>
 
-    <div id="hud">
-        <div class="label">COORDINATE SYSTEM</div>
-        <div class="data-line">CRITICAL STRIP: σ = 0.5</div>
-        <div class="label">HARDWARE ACCELERATION</div>
-        <div class="data-line" id="fps-display">WEBGPU / METAL 3.2</div>
-        <div class="label">ZERO DISCOVERY</div>
-        <div class="data-line">t ≈ 14.134, 21.022...</div>
-    </div>
+    <div id="ui-layer">
+        <div class="glass-panel">
+            <div class="header">
+                <div class="username">@DEBUGONEZERO</div>
+                <div style="font-size: 0.6rem; color: var(--glow);">RESEARCH TERMINAL v3.0</div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-box">DOMAIN<br>Critical Line</div>
+                <div class="stat-box">INPUT<br>τ = 2π</div>
+                <div class="stat-box">ENGINE<br>WebGPU</div>
+                <div class="stat-box">STATUS<br>Rendering</div>
+            </div>
+        </div>
 
-    <div class="formula-card">
-        <div class="label">ACTIVE OPERATOR</div>
-        $$\zeta(s) = \sum_{n=1}^{\infty} \frac{1}{n^s}$$
-        <div style="font-size: 0.7rem; color: var(--glow); margin-top: 10px;">
-            Riemann-Siegel Z-Function Harmonic Simulation
+        <div class="glass-panel formula-container">
+            <div style="font-size: 0.6rem; color: var(--gold); margin-bottom: 10px;">CORE MATHEMATICAL OPERATORS</div>
+            $$\zeta(s) = 2^s \pi^{s-1} \sin\left(\frac{\pi s}{2}\right) \Gamma(1-s) \zeta(1-s)$$
+            $$\Phi(s) = \int_{0}^{\infty} \frac{x^{s-1}}{e^{\tau x} - 1} dx$$
+            <div style="font-size: 0.55rem; color: #555; margin-top: 10px;">MANIFOLD SYMMETRY: \( s \leftrightarrow 1-s \)</div>
         </div>
     </div>
-
-    <canvas id="gpuCanvas"></canvas>
 
 <script type="module">
     const shaderCode = `
@@ -72,46 +85,42 @@
         struct VertexOutput {
             @builtin(position) pos: vec4f,
             @location(0) color: vec3f,
-            @location(1) intensity: f32,
+            @location(1) dist: f32,
         };
 
         @vertex
         fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-            let res = 150u; 
-            let x = f32(idx % res) / f32(res) - 0.5;
+            let res = 120u; 
+            let x = f32(idx % res) / f32(res) - 0.5; 
             let y = f32(idx / res) / f32(res) - 0.5;
             
-            // The "Tau" Frequency 
-            let t = (y + 0.5) * 60.0 + 5.0;
-            let wave = sin(t * 0.4 - u.time) * cos(x * 12.0);
+            let tau = 6.2831853071;
+            let t = (y + 0.5) * 50.0 + 10.0;
             
-            // Detection of non-trivial zeros (simulated dips)
-            let zero1 = 1.0 / (1.0 + pow(abs(t - 14.134) * 10.0, 2.0));
-            let zero2 = 1.0 / (1.0 + pow(abs(t - 21.022) * 10.0, 2.0));
-            let dip = (zero1 + zero2) * 0.3;
+            // Zeta oscillation using the Discussion Formulas
+            let wave = sin(t * 0.4 - u.time) * cos(x * tau * log(t));
+            
+            // Zeros at 14.134, 21.022
+            let z_effect = 0.04 / (0.05 + pow(t - 14.134, 2.0)) + 0.04 / (0.05 + pow(t - 21.022, 2.0));
+            let z = (wave * 0.15) - z_effect;
 
-            let z = (wave * 0.15) - dip;
-
-            // Perspective Projection Matrix simulation
-            let perspective = 1.0 / (y + 1.2);
-            let px = x * 2.2 * perspective;
-            let py = (z - 0.2) * 3.5 * perspective;
+            // Centered Perspective
+            let view_dist = y + 1.5;
+            let px = x * 2.0 / view_dist;
+            let py = (z - 0.25) * 4.0 / view_dist;
 
             var out: VertexOutput;
-            out.pos = vec4f(px, py, y, 1.0);
+            out.pos = vec4f(px, py, 0.0, 1.0);
             
-            // Dynamic coloring: Cyan standard, Red on Zero-Crossing
-            let pulse = sin(u.time * 2.0 + t * 0.1);
-            let isZero = smoothstep(0.1, 0.0, abs(z));
-            out.color = mix(vec3f(0.0, 1.0, 0.8), vec3f(1.0, 0.2, 0.2), isZero * (0.5 + 0.5 * pulse));
-            out.intensity = perspective;
+            let isZero = smoothstep(0.05, 0.0, abs(z));
+            out.color = mix(vec3f(0.0, 0.8, 0.7), vec3f(1.0, 0.8, 0.0), isZero);
+            out.dist = 1.0 / view_dist;
             return out;
         }
 
         @fragment
         fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-            let glow = in.intensity * 0.8;
-            return vec4f(in.color * glow, 1.0);
+            return vec4f(in.color * in.dist, 1.0);
         }
     `;
 
@@ -128,11 +137,9 @@
         const pipeline = device.createRenderPipeline({
             layout: 'auto',
             vertex: { module: device.createShaderModule({ code: shaderCode }), entryPoint: 'vs_main' },
-            fragment: { module: shaderModule(), entryPoint: 'fs_main', targets: [{ format }] },
+            fragment: { module: device.createShaderModule({ code: shaderCode }), entryPoint: 'fs_main', targets: [{ format }] },
             primitive: { topology: 'point-list' }
         });
-
-        function shaderModule() { return device.createShaderModule({ code: shaderCode }); }
 
         const uniformBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         const bindGroup = device.createBindGroup({
@@ -141,35 +148,27 @@
         });
 
         function frame(time) {
-            const data = new Float32Array([time * 0.001, canvas.width, canvas.height, 0]);
-            device.queue.writeBuffer(uniformBuffer, 0, data);
-
-            const commandEncoder = device.createCommandEncoder();
-            const pass = commandEncoder.beginRenderPass({
-                colorAttachments: [{
-                    view: context.getCurrentTexture().createView(),
-                    clearValue: [0.02, 0.04, 0.04, 1],
-                    loadOp: 'clear', storeOp: 'store',
-                }]
+            device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([time * 0.001, canvas.width, canvas.height, 0]));
+            const encoder = device.createCommandEncoder();
+            const pass = encoder.beginRenderPass({
+                colorAttachments: [{ view: context.getCurrentTexture().createView(), clearValue: [0.03, 0.03, 0.03, 1], loadOp: 'clear', storeOp: 'store' }]
             });
-
             pass.setPipeline(pipeline);
             pass.setBindGroup(0, bindGroup);
-            pass.draw(150 * 150); 
+            pass.draw(120 * 120);
             pass.end();
-            device.queue.submit([commandEncoder.finish()]);
+            device.queue.submit([encoder.finish()]);
             requestAnimationFrame(frame);
         }
 
-        const resizer = () => {
+        const resize = () => {
             canvas.width = window.innerWidth * window.devicePixelRatio;
             canvas.height = window.innerHeight * window.devicePixelRatio;
         };
-        window.addEventListener('resize', resizer);
-        resizer();
+        window.addEventListener('resize', resize);
+        resize();
         requestAnimationFrame(frame);
     }
-
     init();
 </script>
 </body>
