@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebugOneZero | Unified Manifold</title>
+    <title>DebugOneZero | Riemann Manifold</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
-        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #010808; --panel: rgba(5, 10, 10, 0.9); }
+        :root { --glow: #00ffcc; --gold: #ffcc00; --bg: #000; --panel: rgba(5, 10, 10, 0.9); }
         * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
         body { margin: 0; background: var(--bg); overflow: hidden; font-family: 'JetBrains Mono', 'Menlo', monospace; color: white; height: 100dvh; }
         canvas { position: absolute; inset: 0; z-index: 1; touch-action: none; }
@@ -34,13 +34,11 @@
 </head>
 <body>
     <canvas id="gpuCanvas"></canvas>
-    
     <div id="ui-layer">
         <div class="glass-panel">
             <div class="username">@DEBUGONEZERO</div>
             <div style="font-size: 0.6rem; color: var(--glow);">P3_QUANTUM_CORE // METAL 4.0</div>
         </div>
-
         <div class="glass-panel">
             $$\zeta(s) = 2^s \pi^{s-1} \sin\left(\frac{\pi s}{2}\right) \Gamma(1-s) \zeta(1-s)$$
             <div class="caption">SYMMETRIC MANIFOLD RECONSTRUCTION</div>
@@ -53,7 +51,7 @@
         time: f32,
         freq: f32,
         zoom: f32,
-        padding: f32,
+        phase: f32,
     };
     @group(0) @binding(0) var<uniform> u: Uniforms;
 
@@ -64,32 +62,31 @@
 
     @vertex
     fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-        let res = 200u;
+        let res = 220u;
         let x = f32(idx % res) / f32(res) - 0.5;
         let y = f32(idx / res) / f32(res) - 0.5;
         
         let tau = 6.2831853071;
-        let t = (y + 0.5) * 50.0 + 10.0;
+        let t = (y + 0.5) * u.freq + 10.0;
         
-        let wave = sin(t * 0.4 - u.time) * cos(x * tau * log(t + 2.0));
-        let z = wave * 0.18;
+        let wave = sin(t * 0.4 - u.time) * cos(x * tau * log(t + u.phase));
+        let z = wave * 0.2 * u.zoom;
 
         let perspective = 1.0 / (y + 1.5);
-        let px = (x * 2.8) * perspective;
-        let py = (z * 5.0) * perspective;
+        let px = (x * 3.0) * perspective;
+        let py = (z * 6.0) * perspective;
 
         var out: VertexOutput;
         out.pos = vec4f(px, py, y, 1.0);
         
         let zero = smoothstep(0.04, 0.0, abs(z));
-        // P3 High-Saturation Mapping
-        out.color = mix(vec3f(0.0, 1.2, 1.0), vec3f(1.8, 1.2, 0.0), zero);
+        out.color = mix(vec3f(0.0, 1.3, 1.1), vec3f(1.9, 1.4, 0.0), zero);
         return out;
     }
 
     @fragment
     fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-        return vec4f(in.color * (1.0 / in.pos.w), 1.0);
+        return vec4f(in.color * (1.1 / in.pos.w), 1.0);
     }
     `;
 
@@ -101,12 +98,8 @@
         const context = canvas.getContext('webgpu');
         
         const format = 'display-p3';
-        const dpr = window.devicePixelRatio || 1;
-        
-        const updateSize = () => {
-            canvas.width = window.innerWidth * dpr;
-            canvas.height = window.innerHeight * dpr;
-        };
+        const dpr = window.devicePixelRatio || 2;
+        const resize = () => { canvas.width = window.innerWidth * dpr; canvas.height = window.innerHeight * dpr; };
 
         context.configure({ device, format, colorSpace: 'display-p3', alphaMode: 'premultiplied' });
 
@@ -124,21 +117,21 @@
         });
 
         function render(time) {
-            device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([time * 0.001, 50, 1, 0]));
+            device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([time * 0.001, 55.0, 1.0, 2.0]));
             const encoder = device.createCommandEncoder();
             const pass = encoder.beginRenderPass({
                 colorAttachments: [{ view: context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 1], loadOp: 'clear', storeOp: 'store' }]
             });
             pass.setPipeline(pipeline);
             pass.setBindGroup(0, bindGroup);
-            pass.draw(200 * 200);
+            pass.draw(220 * 220);
             pass.end();
             device.queue.submit([encoder.finish()]);
             requestAnimationFrame(render);
         }
 
-        window.onresize = updateSize;
-        updateSize();
+        window.onresize = resize;
+        resize();
         requestAnimationFrame(render);
     }
     init();
