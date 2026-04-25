@@ -31,30 +31,28 @@
     const canvas = document.getElementById('canvas');
     const gl = canvas.getContext('webgl2');
 
+    if (!gl) {
+        alert("WebGL2 is not supported or blocked on this device.");
+    }
+
     const vs = `#version 300 es
     layout(location = 0) in vec2 a_gridPos;
     uniform float u_time;
-    uniform vec2 u_resolution;
     out float v_height;
     out vec3 v_color;
 
     void main() {
-        // The "Source Code": Mapping the Zeta critical line
-        float t = a_gridPos.y * 50.0 + 10.0; // Moving up the t-axis
+        float t = a_gridPos.y * 50.0 + 10.0; 
         float sigma = a_gridPos.x; 
 
-        // Simulate the harmonic oscillation near the zeros
-        // We use 14.134, 21.022, 25.010 as frequency anchors
         float wave = sin(t * 0.5 - u_time) * cos(sigma * 10.0);
         float zeroImpact = 1.0 / (0.1 + abs(t - 14.134725));
         
         float z = wave * 0.2 + (zeroImpact * 0.05);
         
         v_height = z;
-        // Color based on "Phase Rotation" (The clock-based system we discussed)
         v_color = vec3(0.0, 0.8, 1.0) * (0.5 + 0.5 * sin(t + u_time));
         
-        // Perspective projection
         vec3 pos = vec3(a_gridPos.x, z, a_gridPos.y - 1.0);
         gl_Position = vec4(pos.x * 1.5, pos.y * 2.0, pos.z, 1.5 - pos.z);
         gl_PointSize = 2.0;
@@ -67,17 +65,14 @@
     out vec4 outColor;
 
     void main() {
-        // Add a "glow" effect to the peaks and zeros
         float brightness = abs(v_height) * 2.0 + 0.4;
         outColor = vec4(v_color * brightness, 1.0);
     }`;
 
-    // Boilerplate setup
     function createShader(gl, type, source) {
         const s = gl.createShader(type);
         gl.shaderSource(s, source);
         gl.compileShader(s);
-        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
         return s;
     }
 
@@ -86,7 +81,6 @@
     gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fs));
     gl.linkProgram(program);
 
-    // Create a high-density grid for the manifold
     const gridData = [];
     const resolution = 100;
     for(let i=0; i<resolution; i++) {
