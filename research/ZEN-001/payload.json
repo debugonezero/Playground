@@ -1,0 +1,1 @@
+{"id": "ZEN-001", "html": "<div style='padding:50px; color:#00ff9d; font-family:monospace; background:#000; height:100%;'><h1>Cosmic Drifter (Zen Game)</h1></div>", "js": "window.axiomaticLog({ event: 'Restored', session: 'ZEN-001' });"}
