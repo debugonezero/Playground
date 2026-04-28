@@ -65,6 +65,35 @@
             status: "READY"
         };
 
+        // RELAY SYNC LOGIC
+        if (window.AXIOMATIC_STATE.session_id !== "LOCAL") {
+            // Auto-Poll for Payloads
+            setInterval(async () => {
+                try {
+                    const response = await fetch(`/relay/${window.AXIOMATIC_STATE.session_id}/payload`);
+                    if (response.ok) {
+                        const payload = await response.json();
+                        // Only execute if it is a new/different payload
+                        if (payload.id !== window.AXIOMATIC_STATE.last_payload_id) {
+                            window.AXIOMATIC_STATE.last_payload_id = payload.id;
+                            injectPayload(payload);
+                        }
+                    }
+                } catch (e) {}
+            }, 2000);
+
+            // Auto-Sync Output/Logs to Relay
+            const syncOutput = async () => {
+                try {
+                    await fetch(`/relay/${window.AXIOMATIC_STATE.session_id}/output`, {
+                        method: 'POST',
+                        body: JSON.stringify(window.AXIOMATIC_STATE)
+                    });
+                } catch (e) {}
+            };
+            setInterval(syncOutput, 5000);
+        }
+
         const consoleEl = document.getElementById('output_console');
 
         // Central Logger
