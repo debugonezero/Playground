@@ -26,13 +26,36 @@
 <body>
     <div id="canvas-container"></div>
     <div id="session-controls">
-        <button class="axiom-btn" onclick="copySharedSession()">Generate & Copy Session URL</button>
+        <button class="axiom-btn" onclick="copySharedSession()">Generate Session URL</button>
+        <button class="axiom-btn" onclick="pasteAndExecute()">Paste & Execute</button>
+        <button class="axiom-btn" onclick="copyLogs()">Copy Logs</button>
     </div>
     <div id="session-tag" class="session-badge">STANDBY</div>
     <div id="output_console">/System/Axiomatic/Bridge: Ready for input...</div>
 
     <script src="session_logic.js"></script>
     <script>
+        async function pasteAndExecute() {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (!text) throw new Error("Clipboard is empty");
+                injectPayload(text);
+            } catch (err) {
+                window.axiomaticLog({ event: "Paste_Error", message: err.message });
+                alert("Could not read clipboard. Ensure you granted clipboard permissions.");
+            }
+        }
+
+        async function copyLogs() {
+            try {
+                const logData = JSON.stringify(window.AXIOMATIC_STATE, null, 2);
+                await navigator.clipboard.writeText(logData);
+                alert("Logs copied to clipboard! Paste them to the Agent.");
+            } catch (err) {
+                alert("Failed to copy logs.");
+            }
+        }
+
         // LIVE TELEMETRY STATE (The Agent's Data Hook)
         window.AXIOMATIC_STATE = {
             session_id: new URLSearchParams(window.location.search).get('session') || "LOCAL",
