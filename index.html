@@ -2,147 +2,53 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebugOneZero | Universal JSON Shell</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Axiomatic Shared Playground</title>
     <style>
-        :root { --bg: #000; --accent: #00ffcc; --gold: #ffcc00; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            background: var(--bg); color: white; font-family: 'JetBrains Mono', monospace; 
-            height: 100dvh; display: grid; grid-template-rows: 1fr auto; overflow: hidden;
-        }
-
-        #render-target { position: relative; width: 100%; height: 100%; background: #000; }
-        canvas { width: 100%; height: 100%; display: block; touch-action: none; }
-
-        #dock { 
-            background: #0a0a0a; border-top: 1px solid #222; 
-            padding: 20px; display: flex; flex-direction: column; gap: 10px; 
-            padding-bottom: env(safe-area-inset-bottom);
-            z-index: 1000;
-        }
-
-        button { 
-            width: 100%; padding: 18px; border-radius: 12px; border: none;
-            font-weight: bold; font-family: inherit; font-size: 0.9rem;
-            text-transform: uppercase; cursor: pointer;
-            background: var(--accent); color: #000; transition: transform 0.1s;
-        }
-        button:active { transform: scale(0.98); }
-
-        #hud { position: absolute; top: 20px; left: 20px; pointer-events: none; z-index: 100; }
-        #status { font-size: 0.6rem; color: var(--accent); margin-top: 5px; text-transform: uppercase; }
-        .username { color: var(--gold); font-size: 0.8rem; letter-spacing: 2px; font-weight: bold; }
+        body { margin: 0; background: #000; color: #00ff9d; font-family: monospace; overflow: hidden; }
+        #console { position: absolute; bottom: 0; left: 0; right: 0; height: 30%; background: rgba(0,20,10,0.9); padding: 10px; font-size: 12px; overflow-y: auto; border-top: 1px solid #00ff9d; z-index: 100; }
+        #ui-layer { position: absolute; inset: 0; pointer-events: none; }
+        .session-tag { position: absolute; top: 10px; right: 10px; background: #00ff9d; color: #000; padding: 5px 10px; font-weight: bold; }
     </style>
 </head>
 <body>
+    <div id="ui-layer"></div>
+    <div id="session-info" class="session-tag">IDLE</div>
+    <div id="console">Initializing System...<br>> Ready for Agent Payload.</div>
 
-<div id="render-target">
-    <canvas id="gpuCanvas"></canvas>
-    <div id="hud">
-        <div class="username">@DEBUGONEZERO</div>
-        <div id="status">BUS: STANDBY</div>
-    </div>
-</div>
+    <script>
+        const axLog = (msg) => {
+            const c = document.getElementById('console');
+            c.innerHTML += `<br>> ${msg}`;
+            c.scrollTop = c.scrollHeight;
+            // Send to parent/agent if connected
+            window.parent.postMessage({ type: 'TELEMETRY_LOG', msg }, '*');
+        };
 
-<div id="dock">
-    <div id="log" style="font-size: 0.6rem; color: #444; text-align: center; margin-bottom: 5px;">AWAITING JSON PAYLOAD</div>
-    <button id="injectBtn">Execute Packet</button>
-</div>
+        const executePayload = (packet) => {
+            try {
+                if (typeof packet === 'string') packet = JSON.parse(packet);
+                axLog("Unpacking Payload...");
+                document.getElementById('ui-layer').innerHTML = packet.html || "";
+                if (packet.js) eval(packet.js);
+                axLog("Execution Success.");
+            } catch (e) {
+                axLog("Execution Error: " + e.message);
+            }
+        };
 
-<script type="module">
-    // --- GLOBAL BUS ---
-    window.device = null;
-    window.pipeline = null;
-    window.bindGroup = null;
-    window.uniformBuffer = null;
-    window.format = null;
-    window.context = null;
-
-    async function init() {
-        if (!navigator.gpu) return;
-        const adapter = await navigator.gpu.requestAdapter();
-        window.device = await adapter.requestDevice();
-        const canvas = document.getElementById('gpuCanvas');
-        window.context = canvas.getContext('webgpu');
-        window.format = navigator.gpu.getPreferredCanvasFormat();
-        
-        const dpr = Math.min(window.devicePixelRatio, 2);
-        canvas.width = canvas.clientWidth * dpr;
-        canvas.height = canvas.clientHeight * dpr;
-
-        window.context.configure({ device: window.device, format: window.format, alphaMode: 'premultiplied' });
-        window.uniformBuffer = window.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        
-        document.getElementById('status').innerText = "SYSTEM: READY";
-        requestAnimationFrame(frame);
-    }
-
-    function frame(time) {
-        if (window.pipeline && window.device) {
-            window.device.queue.writeBuffer(window.uniformBuffer, 0, new Float32Array([time * 0.001, 60.0, 1.0, 2.0]));
-            const enc = window.device.createCommandEncoder();
-            const pass = enc.beginRenderPass({
-                colorAttachments: [{ view: window.context.getCurrentTexture().createView(), clearValue: [0,0,0,1], loadOp: 'clear', storeOp: 'store' }]
-            });
-            pass.setPipeline(window.pipeline);
-            pass.setBindGroup(0, window.bindGroup);
-            pass.draw(220 * 220); 
-            pass.end();
-            window.device.queue.submit([enc.finish()]);
+        // Handle URL Tokens & Remote Session
+        const params = new URLSearchParams(window.location.search);
+        const sessionToken = params.get('session');
+        if (sessionToken) {
+            document.getElementById('session-info').innerText = "SESSION: " + sessionToken;
+            axLog("Remote Agent Connected via Token.");
         }
-        requestAnimationFrame(frame);
-    }
 
-    // --- PACKET UNPACKER ---
-    async function handlePacket() {
-        const log = document.getElementById('log');
-        try {
-            const raw = await navigator.clipboard.readText();
-            const data = JSON.parse(raw); // Parse the incoming JSON
-
-            // 1. GPU Update
-            if (data.wgsl && window.device) {
-                const mod = window.device.createShaderModule({ code: data.wgsl });
-                window.pipeline = window.device.createRenderPipeline({
-                    layout: 'auto',
-                    vertex: { module: mod, entryPoint: 'vs_main' },
-                    fragment: { module: mod, entryPoint: 'fs_main', targets: [{ format: window.format }] },
-                    primitive: { topology: 'point-list' }
-                });
-                window.bindGroup = window.device.createBindGroup({
-                    layout: window.pipeline.getBindGroupLayout(0),
-                    entries: [{ binding: 0, resource: { buffer: window.uniformBuffer } }]
-                });
-            }
-
-            // 2. UI Injection
-            if (data.html) {
-                const overlay = document.createElement('div');
-                overlay.className = "injected-ui";
-                overlay.innerHTML = data.html;
-                document.getElementById('render-target').appendChild(overlay);
-            }
-
-            // 3. Logic Execution
-            if (data.js) {
-                const s = document.createElement('script');
-                s.text = `(function(){ ${data.js} })();`;
-                document.body.appendChild(s);
-            }
-
-            log.innerText = "PACKET_SYNC: OK";
-            log.style.color = "var(--accent)";
-        } catch (err) {
-            log.innerText = "PACKET_ERROR: INVALID_JSON";
-            log.style.color = "#ff4444";
-            console.error(err);
-        }
-    }
-
-    document.getElementById('injectBtn').onclick = handlePacket;
-    init();
-</script>
-
+        // Listen for Direct Agent Messaging
+        window.addEventListener("message", (e) => {
+            if (e.data.type === "EXECUTE_PAYLOAD") executePayload(e.data.payload);
+        });
+    </script>
 </body>
 </html>
