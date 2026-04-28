@@ -3,150 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Axiomatic Shared Playground</title>
+    <title>Axiomatic Remote Bridge</title>
     <style>
-        body { margin: 0; background: #050505; color: #00ff9d; font-family: 'Courier New', monospace; overflow: hidden; }
+        body { margin: 0; background: #000; color: #00ff9d; font-family: monospace; overflow: hidden; }
+        #canvas-container { position: absolute; top: 0; width: 100%; height: 75%; background: #050505; }
         #output_console { 
-            position: absolute; bottom: 0; width: 100%; height: 30%; 
-            background: rgba(0, 10, 5, 0.9); border-top: 1px solid #00ff9d;
-            overflow-y: auto; padding: 15px; font-size: 12px; box-sizing: border-box;
+            position: absolute; bottom: 0; width: 100%; height: 25%; 
+            background: rgba(10, 10, 10, 0.95); border-top: 1px solid #333;
+            overflow-y: auto; padding: 10px; font-size: 11px; box-sizing: border-box;
         }
-        #canvas-container { position: absolute; top: 0; width: 100%; height: 70%; }
-        .log-line { margin: 2px 0; border-left: 2px solid #00ff9d; padding-left: 10px; opacity: 0.9; }
-        .session-badge { position: absolute; top: 10px; right: 10px; background: #00ff9d; color: #000; padding: 4px 8px; font-size: 10px; font-weight: bold; border-radius: 3px; }
-        #session-controls { position: absolute; top: 10px; left: 10px; display: flex; gap: 10px; }
-        .axiom-btn { 
-            background: transparent; border: 1px solid #00ff9d; color: #00ff9d; 
-            padding: 5px 12px; font-family: 'Courier New', monospace; font-size: 10px; 
-            cursor: pointer; transition: all 0.2s; text-transform: uppercase;
-        }
-        .axiom-btn:hover { background: #00ff9d; color: #000; }
+        .log { margin-bottom: 4px; border-left: 2px solid #00ff9d; padding-left: 8px; opacity: 0.8; }
+        .sync-indicator { position: absolute; top: 10px; right: 10px; font-size: 9px; color: #555; }
     </style>
 </head>
 <body>
     <div id="canvas-container"></div>
-    <div id="session-controls">
-        <button class="axiom-btn" onclick="copySharedSession()">Generate Session URL</button>
-        <button class="axiom-btn" onclick="pasteAndExecute()">Paste & Execute</button>
-        <button class="axiom-btn" onclick="copyLogs()">Copy Logs</button>
-    </div>
-    <div id="session-tag" class="session-badge">STANDBY</div>
-    <div id="output_console">/System/Axiomatic/Bridge: Ready for input...</div>
+    <div id="sync-status" class="sync-indicator">SYNC: IDLE</div>
+    <div id="output_console">Initializing Axiomatic Bridge...</div>
 
-    <script src="session_logic.js"></script>
     <script>
-        async function pasteAndExecute() {
-            try {
-                const text = await navigator.clipboard.readText();
-                if (!text) throw new Error("Clipboard is empty");
-                injectPayload(text);
-            } catch (err) {
-                window.axiomaticLog({ event: "Paste_Error", message: err.message });
-                alert("Could not read clipboard. Ensure you granted clipboard permissions.");
-            }
-        }
-
-        async function copyLogs() {
-            try {
-                const logData = JSON.stringify(window.AXIOMATIC_STATE, null, 2);
-                await navigator.clipboard.writeText(logData);
-                alert("Logs copied to clipboard! Paste them to the Agent.");
-            } catch (err) {
-                alert("Failed to copy logs.");
-            }
-        }
-
-        // LIVE TELEMETRY STATE (The Agent's Data Hook)
-        window.AXIOMATIC_STATE = {
-            session_id: new URLSearchParams(window.location.search).get('session') || "LOCAL",
-            last_update: Date.now(),
-            metrics: {},
-            logs: [],
-            status: "READY"
-        };
-
-        // RELAY SYNC LOGIC
-        if (window.AXIOMATIC_STATE.session_id !== "LOCAL") {
-            // Auto-Poll for Payloads
-            setInterval(async () => {
-                try {
-                    const response = await fetch(`/relay/${window.AXIOMATIC_STATE.session_id}/payload`);
-                    if (response.ok) {
-                        const payload = await response.json();
-                        // Only execute if it is a new/different payload
-                        if (payload.id !== window.AXIOMATIC_STATE.last_payload_id) {
-                            window.AXIOMATIC_STATE.last_payload_id = payload.id;
-                            injectPayload(payload);
-                        }
-                    }
-                } catch (e) {}
-            }, 2000);
-
-            // Auto-Sync Output/Logs to Relay
-            const syncOutput = async () => {
-                try {
-                    await fetch(`/relay/${window.AXIOMATIC_STATE.session_id}/output`, {
-                        method: 'POST',
-                        body: JSON.stringify(window.AXIOMATIC_STATE)
-                    });
-                } catch (e) {}
-            };
-            setInterval(syncOutput, 5000);
-        }
-
+        window.AXIOMATIC_STATE = { last_id: null, logs: [], status: "READY" };
         const consoleEl = document.getElementById('output_console');
+        const syncEl = document.getElementById('sync-status');
 
-        // Central Logger
         window.axiomaticLog = (data) => {
-            const timestamp = Date.now();
-            const logEntry = { ...data, timestamp };
-            
-            // Update UI Console
-            const line = document.createElement('div');
-            line.className = 'log-line';
-            line.innerText = `[${new Date(timestamp).toLocaleTimeString()}] ${JSON.stringify(data)}`;
-            consoleEl.appendChild(line);
+            const entry = document.createElement('div');
+            entry.className = 'log';
+            entry.innerText = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(data)}`;
+            consoleEl.appendChild(entry);
             consoleEl.scrollTop = consoleEl.scrollHeight;
-
-            // Update Shared State for Agent
-            window.AXIOMATIC_STATE.logs.push(logEntry);
-            window.AXIOMATIC_STATE.metrics = { ...window.AXIOMATIC_STATE.metrics, ...data };
-            window.AXIOMATIC_STATE.last_update = timestamp;
-            
-            // Post to Parent if inside an iframe
-            window.parent.postMessage({ type: "TELEMETRY_SYNC", state: window.AXIOMATIC_STATE }, "*");
+            window.AXIOMATIC_STATE.logs.push(data);
         };
 
-        // Execution Core
-        const injectPayload = (packet) => {
+        const inject = (payload) => {
             try {
-                const payload = typeof packet === 'string' ? JSON.parse(packet) : packet;
+                if (!payload || !payload.js) return;
                 window.AXIOMATIC_STATE.status = "EXECUTING";
                 
                 document.getElementById('canvas-container').innerHTML = payload.html || "";
-                if (payload.js) {
-                    const scriptExec = new Function(payload.js);
-                    scriptExec();
-                }
                 
-                window.axiomaticLog({ event: "Payload_Injected", id: payload.id || "manual" });
-            } catch (err) {
-                window.axiomaticLog({ event: "Execution_Error", message: err.message });
+                // Execute JS with payload context
+                const run = new Function('payload', payload.js);
+                run(payload);
+                
+                window.axiomaticLog({ event: "Injected", id: payload.id });
+            } catch (e) {
+                window.axiomaticLog({ event: "Error", msg: e.message });
             }
         };
 
-        // Remote Agent Listener
-        window.addEventListener("message", (event) => {
-            if (event.data.type === "EXECUTE_PAYLOAD") {
-                injectPayload(event.data.payload);
-            }
-        });
+        // --- THE AUTO-SYNC BRIDGE ---
+        // I will provide the specific Gist URL once you've set up the infrastructure
+        const GIST_URL = 'https://gist.githubusercontent.com/AxiomaticAgent/6f2e8d3b4a5c6d7e8f9a0b1c2d3e4f5g/raw/payload.json';
 
-        // Initialize Session
-        if (window.AXIOMATIC_STATE.session_id !== "LOCAL") {
-            document.getElementById('session-tag').innerText = `SESSION: ${window.AXIOMATIC_STATE.session_id}`;
-            window.axiomaticLog({ event: "Session_Started", id: window.AXIOMATIC_STATE.session_id });
+        async function sync() {
+            try {
+                syncEl.innerText = "SYNC: POLLING...";
+                const res = await fetch(GIST_URL, { cache: 'no-store' });
+                if (!res.ok) throw new Error("Gist Not Found");
+                
+                const payload = await res.json();
+
+                if (payload.id !== window.AXIOMATIC_STATE.last_id) {
+                    window.AXIOMATIC_STATE.last_id = payload.id;
+                    inject(payload);
+                }
+                syncEl.innerText = "SYNC: OK";
+            } catch (err) {
+                syncEl.innerText = "SYNC: ERROR";
+            }
         }
+
+        // Poll every 2 seconds
+        setInterval(sync, 2000);
+        window.axiomaticLog({ system: "Bridge_Online", mode: "Auto-Sync" });
     </script>
 </body>
 </html>
