@@ -82,9 +82,12 @@
                 } catch (e) {}
             }, 2000);
 
-            // Auto-Sync Output/Logs to Relay
+            // Auto-Sync Output/Logs/DOM to Relay
             const syncOutput = async () => {
                 try {
+                    // Capture the live DOM state
+                    window.AXIOMATIC_STATE.live_dom = document.body.innerHTML;
+                    
                     await fetch(`/relay/${window.AXIOMATIC_STATE.session_id}/output`, {
                         method: 'POST',
                         body: JSON.stringify(window.AXIOMATIC_STATE)

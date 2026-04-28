@@ -1,0 +1,8 @@
+# Ignore Axiomatic Relay Session Data (Logs and live state)
+sessions/
+output.json
+hardware_specs.json
+
+# Ignore Mac OS artifacts
+.DS_Store
+._*
