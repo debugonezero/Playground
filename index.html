@@ -3,59 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Axiomatic Execution Bridge</title>
+    <title>Axiomatic Shared Playground</title>
     <style>
-        body { margin: 0; background: #000; color: #00ff9d; font-family: monospace; }
-        #canvas-container { position: absolute; inset: 0; }
+        body { margin: 0; background: #050505; color: #00ff9d; font-family: 'Courier New', monospace; overflow: hidden; }
         #output_console { 
-            position: absolute; bottom: 0; width: 100%; height: 25%; 
-            background: rgba(10, 10, 10, 0.95); border-top: 2px solid #333;
-            overflow-y: auto; padding: 10px; font-size: 11px; z-index: 1000;
+            position: absolute; bottom: 0; width: 100%; height: 30%; 
+            background: rgba(0, 10, 5, 0.9); border-top: 1px solid #00ff9d;
+            overflow-y: auto; padding: 15px; font-size: 12px; box-sizing: border-box;
         }
-        .log-entry { margin-bottom: 4px; border-left: 2px solid #00ff9d; padding-left: 8px; }
+        #canvas-container { position: absolute; top: 0; width: 100%; height: 70%; }
+        .log-line { margin: 2px 0; border-left: 2px solid #00ff9d; padding-left: 10px; opacity: 0.9; }
+        .session-badge { position: absolute; top: 10px; right: 10px; background: #00ff9d; color: #000; padding: 4px 8px; font-size: 10px; font-weight: bold; border-radius: 3px; }
     </style>
 </head>
 <body>
     <div id="canvas-container"></div>
-    <div id="output_console">Initializing Axiomatic Bridge...</div>
+    <div id="session-tag" class="session-badge">STANDBY</div>
+    <div id="output_console">/System/Axiomatic/Bridge: Ready for input...</div>
 
     <script>
-        const consoleEl = document.getElementById('output_console');
-        
-        // The Telemetry Logger - This is what the Agent reads
-        window.axiomaticLog = (data) => {
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            entry.innerText = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(data)}`;
-            consoleEl.appendChild(entry);
-            consoleEl.scrollTop = consoleEl.scrollHeight;
-            
-            // Broadcast for the Agent to catch
-            window.parent.postMessage({ type: "PAYLOAD_OUTPUT", data }, "*");
+        // LIVE TELEMETRY STATE (The Agent's Data Hook)
+        window.AXIOMATIC_STATE = {
+            session_id: new URLSearchParams(window.location.search).get('session') || "LOCAL",
+            last_update: Date.now(),
+            metrics: {},
+            logs: [],
+            status: "READY"
         };
 
-        const execute = (packet) => {
+        const consoleEl = document.getElementById('output_console');
+
+        // Central Logger
+        window.axiomaticLog = (data) => {
+            const timestamp = Date.now();
+            const logEntry = { ...data, timestamp };
+            
+            // Update UI Console
+            const line = document.createElement('div');
+            line.className = 'log-line';
+            line.innerText = `[${new Date(timestamp).toLocaleTimeString()}] ${JSON.stringify(data)}`;
+            consoleEl.appendChild(line);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+
+            // Update Shared State for Agent
+            window.AXIOMATIC_STATE.logs.push(logEntry);
+            window.AXIOMATIC_STATE.metrics = { ...window.AXIOMATIC_STATE.metrics, ...data };
+            window.AXIOMATIC_STATE.last_update = timestamp;
+            
+            // Post to Parent if inside an iframe
+            window.parent.postMessage({ type: "TELEMETRY_SYNC", state: window.AXIOMATIC_STATE }, "*");
+        };
+
+        // Execution Core
+        const injectPayload = (packet) => {
             try {
-                const data = typeof packet === 'string' ? JSON.parse(packet) : packet;
-                document.getElementById('canvas-container').innerHTML = data.html || "";
-                if (data.js) eval(data.js);
-                window.axiomaticLog({ status: "Payload Injected", timestamp: Date.now() });
+                const payload = typeof packet === 'string' ? JSON.parse(packet) : packet;
+                window.AXIOMATIC_STATE.status = "EXECUTING";
+                
+                document.getElementById('canvas-container').innerHTML = payload.html || "";
+                if (payload.js) {
+                    const scriptExec = new Function(payload.js);
+                    scriptExec();
+                }
+                
+                window.axiomaticLog({ event: "Payload_Injected", id: payload.id || "manual" });
             } catch (err) {
-                window.axiomaticLog({ error: err.message });
+                window.axiomaticLog({ event: "Execution_Error", message: err.message });
             }
         };
 
-        // Listen for the Agent (Shared Session Bridge)
+        // Remote Agent Listener
         window.addEventListener("message", (event) => {
             if (event.data.type === "EXECUTE_PAYLOAD") {
-                execute(event.data.payload);
+                injectPayload(event.data.payload);
             }
         });
 
-        // Check for URL-based session start
-        const sessionID = new URLSearchParams(window.location.search).get('session');
-        if (sessionID) {
-            window.axiomaticLog({ session: sessionID, status: "Connected" });
+        // Initialize Session
+        if (window.AXIOMATIC_STATE.session_id !== "LOCAL") {
+            document.getElementById('session-tag').innerText = `SESSION: ${window.AXIOMATIC_STATE.session_id}`;
+            window.axiomaticLog({ event: "Session_Started", id: window.AXIOMATIC_STATE.session_id });
         }
     </script>
 </body>
