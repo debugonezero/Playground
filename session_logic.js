@@ -1,7 +1,8 @@
 /**
  * AXIOMATIC SESSION GENERATOR
- * Run this to create a shareable URL for the agent.
+ * Handles session creation and clipboard interaction.
  */
+
 function createSharedSession() {
     const sessionToken = Math.random().toString(36).substring(2, 8).toUpperCase();
     const currentUrl = window.location.origin + window.location.pathname;
@@ -9,10 +10,28 @@ function createSharedSession() {
     
     console.log("--- NEW SESSION GENERATED ---");
     console.log("Session ID:", sessionToken);
-    console.log("Share this URL with the Agent:", shareableLink);
+    console.log("Shareable Link:", shareableLink);
     
-    // If running on your phone, you can copy this to clipboard
     return shareableLink;
 }
 
-// Example usage: Call createSharedSession() from your console or a button.
+/**
+ * Copies the generated session URL to the clipboard and logs the event.
+ */
+async function copySharedSession() {
+    const url = createSharedSession();
+    try {
+        await navigator.clipboard.writeText(url);
+        if (window.axiomaticLog) {
+            window.axiomaticLog({ 
+                event: "SESSION_COPIED", 
+                message: "Shareable URL copied to clipboard!",
+                url: url 
+            });
+        }
+        alert("Session URL copied to clipboard!\n" + url);
+    } catch (err) {
+        console.error('Failed to copy: ', err);
+        alert("Failed to copy to clipboard. Check console for URL.");
+    }
+}
