@@ -3,16 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Axiomatic Playground</title>
+    <title>Axiomatic Bridge</title>
     <style>
-        body { margin: 0; background: #000; color: #00ff9d; font-family: monospace; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        #canvas-container { flex-grow: 1; background: #000; position: relative; }
-        #terminal { height: 30%; background: #0a0a0a; border-top: 1px solid #333; display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; }
-        #logs { flex-grow: 1; overflow-y: auto; font-size: 11px; margin-bottom: 10px; }
-        .log-entry { border-left: 2px solid #00ff9d; padding-left: 8px; margin-bottom: 2px; }
-        .controls { display: flex; gap: 10px; }
-        button { background: #00ff9d; color: #000; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; font-family: monospace; }
-        button:active { background: #008f58; }
+        :root { --neon: #00ff9d; }
+        body { margin: 0; background: #000; color: var(--neon); font-family: monospace; overflow: hidden; }
+        
+        /* The GPU Layer - Always full screen */
+        #canvas-container { position: absolute; inset: 0; z-index: 1; }
+        
+        /* The System Layer - Floating and semi-transparent */
+        #terminal { 
+            position: absolute; bottom: 0; left: 0; right: 0; height: 180px;
+            background: rgba(0, 0, 0, 0.85); border-top: 1px solid #222;
+            z-index: 10; display: flex; flex-direction: column; padding: 10px;
+        }
+
+        #logs { flex-grow: 1; overflow-y: auto; font-size: 11px; margin-bottom: 8px; }
+        .log-entry { border-left: 2px solid var(--neon); padding-left: 8px; margin-bottom: 3px; }
+        
+        button { 
+            background: var(--neon); color: #000; border: none; padding: 12px; 
+            font-weight: bold; width: 100%; cursor: pointer; text-transform: uppercase;
+        }
     </style>
 </head>
 <body>
@@ -21,45 +33,37 @@
 
     <div id="terminal">
         <div id="logs"></div>
-        <div class="controls">
-            <button id="pasteBtn">PASTE & EXECUTE</button>
-        </div>
+        <button id="pasteBtn">Execute Clipboard Payload</button>
     </div>
 
     <script>
         const logContainer = document.getElementById('logs');
         
-        window.axiomaticLog = (data) => {
+        window.axiomaticLog = (msg) => {
             const entry = document.createElement('div');
             entry.className = 'log-entry';
-            entry.innerText = `[${new Date().toLocaleTimeString()}] ${data}`;
+            entry.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
             logContainer.appendChild(entry);
             logContainer.scrollTop = logContainer.scrollHeight;
         };
 
-        window.inject = async (payload) => {
+        window.inject = async (p) => {
             try {
-                window.axiomaticLog("Injecting: " + payload.id);
-                document.getElementById('canvas-container').innerHTML = payload.html || "";
-                const run = new Function('payload', payload.js);
-                await run(payload);
-                window.axiomaticLog("Status: Online");
-            } catch (err) {
-                window.axiomaticLog("Error: " + err.message);
-            }
+                window.axiomaticLog("Initializing: " + p.id);
+                document.getElementById('canvas-container').innerHTML = p.html || "";
+                const run = new Function('payload', p.js);
+                await run(p);
+            } catch (err) { window.axiomaticLog("FAIL: " + err.message); }
         };
 
-        document.getElementById('pasteBtn').addEventListener('click', async () => {
+        document.getElementById('pasteBtn').onclick = async () => {
             try {
                 const text = await navigator.clipboard.readText();
-                // This executes the inject({...}) code inside the clipboard
                 eval(text);
-            } catch (err) {
-                window.axiomaticLog("Clipboard Error: " + err.message);
-            }
-        });
+            } catch (e) { window.axiomaticLog("Clipboard Access Denied"); }
+        };
 
-        window.axiomaticLog("Axiomatic Ready.");
+        window.axiomaticLog("System Baseline Restored.");
     </script>
 </body>
 </html>
