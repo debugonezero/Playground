@@ -1,58 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sovereign Lab // DebugOneZero</title>
+    <title>Sovereign Lab // FIX</title>
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; margin: 0; display: flex; flex-direction: column; height: 100dvh; }
-        #view { flex: 1; position: relative; border-bottom: 1px solid #222; }
+        body { background: #000; color: #00ff88; font-family: monospace; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        #view { flex: 1; border: 1px solid #222; margin: 10px; position: relative; }
         canvas { width: 100%; height: 100%; display: block; }
-        #ui { padding: 15px; background: #0a0a0a; display: flex; justify-content: space-between; align-items: center; }
-        #log { font-size: 10px; color: #666; }
-        button { background: #0f0; color: #000; border: none; padding: 12px 24px; font-weight: bold; cursor: pointer; }
+        #ui { background: #111; padding: 15px; border-top: 1px solid #333; display: flex; justify-content: space-between; }
+        button { background: #00ff88; color: #000; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
     <div id="view"><canvas id="gpuCanvas"></canvas></div>
     <div id="ui">
-        <div id="status-container">
+        <div>
             <div id="st">● OFFLINE</div>
-            <div id="log">Awaiting Payload...</div>
+            <div id="log" style="font-size: 10px; color: #666;">Awaiting Init...</div>
         </div>
-        <button onclick="paster()">PASTE_PAYLOAD</button>
+        <button onclick="paster()">[ PASTE_PAYLOAD ]</button>
     </div>
     <script>
-        const state = { device: null, uniforms: {}, buffers: {} };
-        const log = (m) => document.getElementById('log').innerText = m;
-        const st = (m) => document.getElementById('st').innerText = "● " + m;
+        // Global State - Payloads look for 'state'
+        window.state = { device: null, context: null, buffers: {}, uniforms: {} };
 
         async function init() {
-            if (!navigator.gpu) return st("NO_WEBGPU");
-            const ad = await navigator.gpu.requestAdapter();
-            state.device = await ad.requestDevice();
-            const canvas = document.getElementById('gpuCanvas');
-            state.ctx = canvas.getContext('webgpu');
-            state.ctx.configure({ device: state.device, format: navigator.gpu.getPreferredCanvasFormat() });
-            st("READY"); log("Device: " + ad.name);
+            const logEl = document.getElementById('log');
+            const stEl = document.getElementById('st');
+            try {
+                if (!navigator.gpu) throw new Error("WebGPU Not Supported");
+                const adapter = await navigator.gpu.requestAdapter();
+                if (!adapter) throw new Error("No Adapter Found");
+                
+                state.device = await adapter.requestDevice();
+                const canvas = document.getElementById('gpuCanvas');
+                state.context = canvas.getContext('webgpu');
+                
+                state.context.configure({
+                    device: state.device,
+                    format: navigator.gpu.getPreferredCanvasFormat()
+                });
+
+                stEl.innerText = "● HW_READY";
+                logEl.innerText = "Hardware: " + adapter.name;
+            } catch (e) {
+                stEl.innerText = "● HW_ERROR";
+                logEl.innerText = e.message;
+            }
         }
 
         async function paster() {
             try {
-                const txt = await navigator.clipboard.readText();
-                const payload = JSON.parse(txt);
-                
-                // UPDATE HTML IF PRESENT
-                if (payload.html) document.getElementById('view').innerHTML = payload.html;
-                
-                // EXECUTE JS - The "Sovereign" Way
-                if (payload.js) {
-                    // We use an immediately invoked function expression (IIFE)
-                    const fn = new Function('p', 'state', `return (async () => { ${payload.js} })();`);
-                    await fn(payload, state);
-                    st("LIVE");
+                const raw = await navigator.clipboard.readText();
+                const p = JSON.parse(raw);
+                if (p.js) {
+                    // This IIFE pattern ensures the payload can see 'state' and use 'await'
+                    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+                    const execute = new AsyncFunction('p', 'state', p.js);
+                    await execute(p, state);
                 }
-            } catch (e) { log("ERR: " + e.message); console.error(e); }
+            } catch (e) {
+                document.getElementById('log').innerText = "JS_ERR: " + e.message;
+            }
         }
         init();
     </script>
