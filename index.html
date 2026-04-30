@@ -3,80 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sovereign Lab // Responsive Engine</title>
+    <title>Sovereign Lab // WebGPU Engine</title>
     <style>
         :root { --accent: #00ff88; --bg: #050505; }
-        body { background: var(--bg); color: var(--accent); font-family: 'SF Mono', monospace; margin: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
-        
-        /* The Viewport: Responsive but strict for WebGPU */
-        #viewport { flex: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        canvas { max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 0 20px rgba(0,255,136,0.1); }
-
-        /* Control Bar: Compact for mobile */
-        #controls { background: #111; border-top: 1px solid #222; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 10px; z-index: 10; }
-        #status-gate { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; }
-        button { background: var(--accent); color: #000; border: none; padding: 12px; font-weight: 900; border-radius: 4px; cursor: pointer; transition: 0.2s; }
-        button:active { transform: scale(0.98); filter: brightness(1.2); }
+        body { background: var(--bg); color: var(--accent); font-family: 'SF Mono', monospace; margin: 0; display: flex; flex-direction: column; height: 100dvh; }
+        #viewport { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden; }
+        canvas { max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid #222; }
+        #controls { background: #111; border-top: 1px solid #333; padding: 15px; display: grid; grid-template-columns: 1fr auto; gap: 15px; }
+        #status { font-size: 11px; display: flex; flex-direction: column; justify-content: center; }
+        button { background: var(--accent); color: #000; border: none; padding: 15px 25px; font-weight: 900; border-radius: 4px; cursor: pointer; }
+        button:active { transform: scale(0.98); }
     </style>
 </head>
 <body>
     <div id="viewport"><canvas id="gpuCanvas"></canvas></div>
     <div id="controls">
-        <div id="status-gate">● DISCONNECTED</div>
-        <button onclick="paster()">PASTE_PAYLOAD</button>
+        <div id="status"><div>● SYSTEM_IDLE</div><div id="log" style="color:#666; font-size:9px;">Awaiting Hardware Handshake...</div></div>
+        <button onclick="handlePaste()">[ PASTE PAYLOAD ]</button>
     </div>
 
     <script>
-        const state = { device: null, pipe: null, buffs: {}, uniforms: {} };
-        const canvas = document.getElementById('gpuCanvas');
-        const gate = document.getElementById('status-gate');
+        const state = { device: null, context: null, buffers: {}, uniforms: {} };
+        const log = (msg) => document.getElementById('log').innerText = msg;
+        const status = (msg) => document.getElementById('status').firstElementChild.innerText = "● " + msg;
 
         async function init() {
-            if (!navigator.gpu) return gate.innerText = "● WEBGPU_UNSUPPORTED";
+            if (!navigator.gpu) return status("WEBGPU_NOT_SUPPORTED");
             const adapter = await navigator.gpu.requestAdapter();
             state.device = await adapter.requestDevice();
-            const context = canvas.getContext('webgpu');
+            const canvas = document.getElementById('gpuCanvas');
+            state.context = canvas.getContext('webgpu');
             
-            // DPI Awareness: Match physical pixels to prevent kernel blur/misalignment
             const dpr = window.devicePixelRatio || 1;
             canvas.width = canvas.clientWidth * dpr;
             canvas.height = canvas.clientHeight * dpr;
             
-            context.configure({ 
+            state.context.configure({ 
                 device: state.device, 
-                format: navigator.gpu.getPreferredCanvasFormat(),
-                alphaMode: 'premultiplied'
+                format: navigator.gpu.getPreferredCanvasFormat() 
             });
-            gate.innerText = "● HW_READY";
+            status("HW_READY"); log("Device: " + adapter.name);
         }
 
-        async function paster() {
-            const raw = await navigator.clipboard.readText();
+        async function handlePaste() {
             try {
+                const raw = await navigator.clipboard.readText();
                 const payload = JSON.parse(raw);
-                // Handle Micro-Payload (Key-Value Edits)
+                
+                // MICRO-PAYLOAD EDIT
                 if (payload.key && state.uniforms[payload.key]) {
-                    patchValue(payload.key, payload.value);
-                } else {
-                    fullBoot(payload);
+                    const data = new Float32Array([payload.value]);
+                    state.device.queue.writeBuffer(state.uniforms[payload.key], 0, data);
+                    status("PATCHED: " + payload.key);
+                } 
+                // FULL REBUILD (If the payload contains 'js' string)
+                else if (payload.js) {
+                    const run = new Function('p', 'state', payload.js);
+                    await run(payload, state);
                 }
-            } catch(e) { gate.innerText = "● JSON_PARSE_ERROR"; }
+            } catch (e) {
+                log("ERR: " + e.message);
+                console.error(e);
+            }
         }
 
-        function patchValue(key, val) {
-            // Write directly to the existing buffer mapped to the hardware
-            const data = new Float32Array([val]);
-            state.device.queue.writeBuffer(state.uniforms[key], 0, data);
-            gate.innerText = `● PATCHED: ${key}`;
-        }
-
-        async function fullBoot(p) {
-            // Your full kernel logic lives here
-            gate.innerText = "● KERNEL_ENGAGED";
-        }
-
-        window.addEventListener('resize', init);
-        init();
+        window.addEventListener('load', init);
     </script>
 </body>
 </html>
