@@ -3,76 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Axiomatic Hardware Bridge</title>
+    <title>Axiomatic Playground</title>
     <style>
-        :root { --neon: #00ff9d; --bg: #050505; }
-        body { margin: 0; background: var(--bg); color: var(--neon); font-family: 'SF Mono', monospace; overflow: hidden; }
-        
-        #canvas-container { position: absolute; top: 0; width: 100%; height: 100%; background: #000; }
-        
-        #output_console { 
-            position: absolute; bottom: 0; width: 100%; height: 25%; 
-            background: rgba(5, 5, 5, 0.9); border-top: 1px solid #222;
-            overflow-y: auto; padding: 12px; font-size: 11px; box-sizing: border-box;
-            pointer-events: none; /* Keeps the focus on the GPU interaction */
-        }
-
-        .log-entry { margin-bottom: 4px; border-left: 2px solid var(--neon); padding-left: 8px; opacity: 0.8; }
-        .system-header { font-size: 9px; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+        body { margin: 0; background: #000; color: #00ff9d; font-family: monospace; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        #canvas-container { flex-grow: 1; background: #000; position: relative; }
+        #terminal { height: 30%; background: #0a0a0a; border-top: 1px solid #333; display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; }
+        #logs { flex-grow: 1; overflow-y: auto; font-size: 11px; margin-bottom: 10px; }
+        .log-entry { border-left: 2px solid #00ff9d; padding-left: 8px; margin-bottom: 2px; }
+        .controls { display: flex; gap: 10px; }
+        button { background: #00ff9d; color: #000; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; font-family: monospace; }
+        button:active { background: #008f58; }
     </style>
 </head>
 <body>
 
     <div id="canvas-container"></div>
 
-    <div id="output_console">
-        <div class="system-header">Axiomatic v1.0 // Direct Bridge // i9-5700XT</div>
+    <div id="terminal">
         <div id="logs"></div>
+        <div class="controls">
+            <button id="pasteBtn">PASTE & EXECUTE</button>
+        </div>
     </div>
 
     <script>
         const logContainer = document.getElementById('logs');
-
-        // Clean, minimalist logging
+        
         window.axiomaticLog = (data) => {
             const entry = document.createElement('div');
             entry.className = 'log-entry';
-            const time = new Date().toLocaleTimeString().split(' ')[0];
-            entry.innerHTML = `<span style="color:#444">[${time}]</span> ${data}`;
+            entry.innerText = `[${new Date().toLocaleTimeString()}] ${data}`;
             logContainer.appendChild(entry);
             logContainer.scrollTop = logContainer.scrollHeight;
         };
 
-        // The original Direct Injection logic
         window.inject = async (payload) => {
             try {
-                window.axiomaticLog("Handshake: " + payload.id);
-                
-                // Clear the container for the new render
-                const container = document.getElementById('canvas-container');
-                container.innerHTML = payload.html || "";
-                
-                // Direct execution of the GPU orchestration
-                const task = new Function('payload', payload.js);
-                await task(payload);
-                
-                window.axiomaticLog("Status: " + payload.id + " active.");
+                window.axiomaticLog("Injecting: " + payload.id);
+                document.getElementById('canvas-container').innerHTML = payload.html || "";
+                const run = new Function('payload', payload.js);
+                await run(payload);
+                window.axiomaticLog("Status: Online");
             } catch (err) {
-                window.axiomaticLog("CRITICAL: " + err.message);
+                window.axiomaticLog("Error: " + err.message);
             }
         };
 
-        // Hardware Verification
-        (async () => {
-            if (!navigator.gpu) {
-                window.axiomaticLog("WebGPU not detected.");
-                return;
+        document.getElementById('pasteBtn').addEventListener('click', async () => {
+            try {
+                const text = await navigator.clipboard.readText();
+                // This executes the inject({...}) code inside the clipboard
+                eval(text);
+            } catch (err) {
+                window.axiomaticLog("Clipboard Error: " + err.message);
             }
-            const adapter = await navigator.gpu.requestAdapter();
-            if (adapter) {
-                window.axiomaticLog("Hardware Verified: " + (adapter.name || "WebGPU Engine"));
-            }
-        })();
+        });
+
+        window.axiomaticLog("Axiomatic Ready.");
     </script>
 </body>
 </html>
