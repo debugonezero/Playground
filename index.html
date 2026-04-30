@@ -1,104 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Axiomatic Playground | v2.0</title>
+    <title>Sovereign Lab // WebGPU Host</title>
     <style>
-        :root { --accent: #00ff9d; --bg: #050505; }
-        body, html { 
-            margin: 0; padding: 0; width: 100%; height: 100%; 
-            background: #000; overflow: hidden; 
-            font-family: 'SF Mono', 'Fira Code', monospace; 
-            user-select: none;
-        }
-        
-        #render-target { position: absolute; inset: 0; z-index: 1; }
-        
-        #overlay { 
-            position: absolute; bottom: 20px; left: 20px; right: 20px; 
-            z-index: 100; pointer-events: none;
-        }
-
-        #console {
-            background: rgba(10, 10, 10, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 15px;
-            pointer-events: auto;
-        }
-
-        #log-stream { 
-            height: 80px; overflow-y: auto; font-size: 10px; color: #888; 
-            margin-bottom: 12px; scroll-behavior: smooth;
-        }
-
-        .log-entry { margin-bottom: 4px; border-left: 2px solid var(--accent); padding-left: 8px; }
-
-        .btn-primary {
-            background: var(--accent);
-            color: #000;
-            border: none;
-            width: 100%;
-            padding: 16px;
-            font-weight: 800;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            border-radius: 4px;
-            cursor: pointer;
-        }
+        body { background: #000; color: #0f0; font-family: monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        #canvas-container { flex: 1; position: relative; }
+        canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+        #ui { background: #111; border-top: 1px solid #333; padding: 10px; display: flex; gap: 10px; align-items: center; }
+        button { background: #0f0; color: #000; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; }
+        #status { font-size: 10px; color: #888; }
+        textarea { position: absolute; top: -100px; } /* Hidden paste target */
     </style>
 </head>
 <body>
-
-    <div id="render-target"></div>
-
-    <div id="overlay">
-        <div id="console">
-            <div id="log-stream">
-                <div class="log-entry">SYSTEM: RESTORED</div>
-                <div class="log-entry">HARDWARE: LISTENING</div>
-            </div>
-            <button class="btn-primary" id="exec-trigger">Paste & Execute</button>
-        </div>
+    <div id="canvas-container"><canvas id="gpuCanvas"></canvas></div>
+    <div id="ui">
+        <button onclick="handlePaste()">[ PASTE PAYLOAD ]</button>
+        <div id="status">HW_STATUS: AWAITING_INITIALIZATION</div>
     </div>
 
     <script>
-        const stream = document.getElementById('log-stream');
-        window.axiomaticLog = (msg) => {
-            const div = document.createElement('div');
-            div.className = 'log-entry';
-            div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            stream.appendChild(div);
-            stream.scrollTop = stream.scrollHeight;
-        };
+        let state = { device: null, ctx: null, pipeline: null, buffers: {}, params: {} };
 
-        window.inject = async (payload) => {
+        async function initGPU() {
+            if (!navigator.gpu) return alert("WebGPU not supported");
+            state.adapter = await navigator.gpu.requestAdapter();
+            state.device = await state.adapter.requestDevice();
+            state.ctx = document.getElementById('gpuCanvas').getContext('webgpu');
+            state.ctx.configure({ device: state.device, format: navigator.gpu.getPreferredCanvasFormat() });
+            document.getElementById('status').innerText = "HW_STATUS: GPU_READY";
+        }
+
+        async function handlePaste() {
             try {
-                window.axiomaticLog("BOOT: " + payload.id);
-                document.getElementById('render-target').innerHTML = payload.html || "";
+                const text = await navigator.clipboard.readText();
+                const payload = JSON.parse(text);
                 
-                // Orchestrator Execution
-                const task = new Function('payload', payload.js);
-                await task(payload);
-                window.axiomaticLog("ACTIVE: " + payload.id);
+                // Check if it's a Micro-Payload (Key-Value Edit) or a Full Rebuild
+                if (payload.type === "EDIT") {
+                    updateState(payload.edits);
+                } else {
+                    rebuildKernel(payload);
+                }
             } catch (e) {
-                window.axiomaticLog("CRITICAL: " + e.message);
+                document.getElementById('status').innerText = "ERR: " + e.message;
             }
-        };
+        }
 
-        document.getElementById('exec-trigger').onclick = async () => {
-            try {
-                const raw = await navigator.clipboard.readText();
-                // Handshake with JSON structure
-                const payload = JSON.parse(raw);
-                window.inject(payload);
-            } catch (e) {
-                window.axiomaticLog("CLIPBOARD/JSON ERROR");
+        function updateState(edits) {
+            // Update uniforms or constants without stopping the device
+            for (let [key, value] of Object.entries(edits)) {
+                state.params[key] = value;
+                if (state.buffers[key]) {
+                    state.device.queue.writeBuffer(state.buffers[key], 0, new Float32Array([value]));
+                }
             }
-        };
+            document.getElementById('status').innerText = "STATUS: PATCH_APPLIED";
+        }
+
+        async function rebuildKernel(payload) {
+            // Full kernel rebuild logic using the Tiled GEMM schema
+            // ... (Your optimized WGSL logic here) ...
+            document.getElementById('status').innerText = "STATUS: KERNEL_REBUILT";
+        }
+
+        initGPU();
     </script>
 </body>
 </html>
