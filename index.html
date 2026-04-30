@@ -1,70 +1,82 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Sovereign Lab // WebGPU Host</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sovereign Lab // Responsive Engine</title>
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        #canvas-container { flex: 1; position: relative; }
-        canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
-        #ui { background: #111; border-top: 1px solid #333; padding: 10px; display: flex; gap: 10px; align-items: center; }
-        button { background: #0f0; color: #000; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; }
-        #status { font-size: 10px; color: #888; }
-        textarea { position: absolute; top: -100px; } /* Hidden paste target */
+        :root { --accent: #00ff88; --bg: #050505; }
+        body { background: var(--bg); color: var(--accent); font-family: 'SF Mono', monospace; margin: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+        
+        /* The Viewport: Responsive but strict for WebGPU */
+        #viewport { flex: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        canvas { max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 0 20px rgba(0,255,136,0.1); }
+
+        /* Control Bar: Compact for mobile */
+        #controls { background: #111; border-top: 1px solid #222; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 10px; z-index: 10; }
+        #status-gate { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; }
+        button { background: var(--accent); color: #000; border: none; padding: 12px; font-weight: 900; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+        button:active { transform: scale(0.98); filter: brightness(1.2); }
     </style>
 </head>
 <body>
-    <div id="canvas-container"><canvas id="gpuCanvas"></canvas></div>
-    <div id="ui">
-        <button onclick="handlePaste()">[ PASTE PAYLOAD ]</button>
-        <div id="status">HW_STATUS: AWAITING_INITIALIZATION</div>
+    <div id="viewport"><canvas id="gpuCanvas"></canvas></div>
+    <div id="controls">
+        <div id="status-gate">● DISCONNECTED</div>
+        <button onclick="paster()">PASTE_PAYLOAD</button>
     </div>
 
     <script>
-        let state = { device: null, ctx: null, pipeline: null, buffers: {}, params: {} };
+        const state = { device: null, pipe: null, buffs: {}, uniforms: {} };
+        const canvas = document.getElementById('gpuCanvas');
+        const gate = document.getElementById('status-gate');
 
-        async function initGPU() {
-            if (!navigator.gpu) return alert("WebGPU not supported");
-            state.adapter = await navigator.gpu.requestAdapter();
-            state.device = await state.adapter.requestDevice();
-            state.ctx = document.getElementById('gpuCanvas').getContext('webgpu');
-            state.ctx.configure({ device: state.device, format: navigator.gpu.getPreferredCanvasFormat() });
-            document.getElementById('status').innerText = "HW_STATUS: GPU_READY";
+        async function init() {
+            if (!navigator.gpu) return gate.innerText = "● WEBGPU_UNSUPPORTED";
+            const adapter = await navigator.gpu.requestAdapter();
+            state.device = await adapter.requestDevice();
+            const context = canvas.getContext('webgpu');
+            
+            // DPI Awareness: Match physical pixels to prevent kernel blur/misalignment
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.clientWidth * dpr;
+            canvas.height = canvas.clientHeight * dpr;
+            
+            context.configure({ 
+                device: state.device, 
+                format: navigator.gpu.getPreferredCanvasFormat(),
+                alphaMode: 'premultiplied'
+            });
+            gate.innerText = "● HW_READY";
         }
 
-        async function handlePaste() {
+        async function paster() {
+            const raw = await navigator.clipboard.readText();
             try {
-                const text = await navigator.clipboard.readText();
-                const payload = JSON.parse(text);
-                
-                // Check if it's a Micro-Payload (Key-Value Edit) or a Full Rebuild
-                if (payload.type === "EDIT") {
-                    updateState(payload.edits);
+                const payload = JSON.parse(raw);
+                // Handle Micro-Payload (Key-Value Edits)
+                if (payload.key && state.uniforms[payload.key]) {
+                    patchValue(payload.key, payload.value);
                 } else {
-                    rebuildKernel(payload);
+                    fullBoot(payload);
                 }
-            } catch (e) {
-                document.getElementById('status').innerText = "ERR: " + e.message;
-            }
+            } catch(e) { gate.innerText = "● JSON_PARSE_ERROR"; }
         }
 
-        function updateState(edits) {
-            // Update uniforms or constants without stopping the device
-            for (let [key, value] of Object.entries(edits)) {
-                state.params[key] = value;
-                if (state.buffers[key]) {
-                    state.device.queue.writeBuffer(state.buffers[key], 0, new Float32Array([value]));
-                }
-            }
-            document.getElementById('status').innerText = "STATUS: PATCH_APPLIED";
+        function patchValue(key, val) {
+            // Write directly to the existing buffer mapped to the hardware
+            const data = new Float32Array([val]);
+            state.device.queue.writeBuffer(state.uniforms[key], 0, data);
+            gate.innerText = `● PATCHED: ${key}`;
         }
 
-        async function rebuildKernel(payload) {
-            // Full kernel rebuild logic using the Tiled GEMM schema
-            // ... (Your optimized WGSL logic here) ...
-            document.getElementById('status').innerText = "STATUS: KERNEL_REBUILT";
+        async function fullBoot(p) {
+            // Your full kernel logic lives here
+            gate.innerText = "● KERNEL_ENGAGED";
         }
 
-        initGPU();
+        window.addEventListener('resize', init);
+        init();
     </script>
 </body>
 </html>
