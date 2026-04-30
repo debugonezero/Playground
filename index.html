@@ -1,93 +1,60 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sovereign Lab // GPU_IGNITION</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sovereign Lab // DebugOneZero</title>
     <style>
-        :root { --green: #00ff88; --bg: #050505; }
-        body { background: var(--bg); color: var(--green); font-family: 'SF Mono', monospace; margin: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
-        #viewport { flex: 1; background: #000; position: relative; border: 1px solid #222; margin: 10px; display: flex; align-items: center; justify-content: center; }
-        canvas { width: 100%; height: 100%; object-fit: contain; }
-        #ui { background: #111; padding: 15px; border-top: 1px solid #333; display: grid; grid-template-columns: 1fr auto; gap: 15px; }
-        #console { font-size: 10px; color: #888; max-height: 50px; overflow-y: auto; line-height: 1.4; }
-        button { background: var(--green); color: #000; border: none; padding: 15px 25px; font-weight: 900; border-radius: 4px; cursor: pointer; text-transform: uppercase; }
-        button:active { transform: scale(0.95); }
+        body { background: #000; color: #0f0; font-family: monospace; margin: 0; display: flex; flex-direction: column; height: 100dvh; }
+        #view { flex: 1; position: relative; border-bottom: 1px solid #222; }
+        canvas { width: 100%; height: 100%; display: block; }
+        #ui { padding: 15px; background: #0a0a0a; display: flex; justify-content: space-between; align-items: center; }
+        #log { font-size: 10px; color: #666; }
+        button { background: #0f0; color: #000; border: none; padding: 12px 24px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div id="viewport"><canvas id="gpuCanvas"></canvas></div>
+    <div id="view"><canvas id="gpuCanvas"></canvas></div>
     <div id="ui">
-        <div id="status-bar">
-            <div id="state-text" style="font-weight:bold;">● SYSTEM_IDLE</div>
-            <div id="console">Awaiting Hardware Handshake...</div>
+        <div id="status-container">
+            <div id="st">● OFFLINE</div>
+            <div id="log">Awaiting Payload...</div>
         </div>
-        <button onclick="handlePaste()">[ PASTE_PAYLOAD ]</button>
+        <button onclick="paster()">PASTE_PAYLOAD</button>
     </div>
-
     <script>
-        const state = { device: null, context: null, uniforms: {}, buffers: {} };
-        const con = document.getElementById('console');
-        const st = document.getElementById('state-text');
-
-        const log = (msg, err = false) => {
-            con.innerHTML = `<div>${err ? '<span style="color:#ff4444;">[ERR]</span>' : '[OK]'} ${msg}</div>` + con.innerHTML;
-            if (err) console.error(msg);
-        };
+        const state = { device: null, uniforms: {}, buffers: {} };
+        const log = (m) => document.getElementById('log').innerText = m;
+        const st = (m) => document.getElementById('st').innerText = "● " + m;
 
         async function init() {
-            try {
-                if (!navigator.gpu) throw new Error("WebGPU_Unsupported");
-                const adapter = await navigator.gpu.requestAdapter();
-                state.device = await adapter.requestDevice();
-                state.context = document.getElementById('gpuCanvas').getContext('webgpu');
-                
-                const dpr = window.devicePixelRatio || 1;
-                const canvas = state.context.canvas;
-                canvas.width = canvas.clientWidth * dpr;
-                canvas.height = canvas.clientHeight * dpr;
-
-                state.context.configure({ 
-                    device: state.device, 
-                    format: navigator.gpu.getPreferredCanvasFormat()
-                });
-                
-                st.innerText = "● HW_READY";
-                log(`Device: ${adapter.name}`);
-            } catch (e) {
-                st.innerText = "● HW_FAILURE";
-                log(e.message, true);
-            }
+            if (!navigator.gpu) return st("NO_WEBGPU");
+            const ad = await navigator.gpu.requestAdapter();
+            state.device = await ad.requestDevice();
+            const canvas = document.getElementById('gpuCanvas');
+            state.ctx = canvas.getContext('webgpu');
+            state.ctx.configure({ device: state.device, format: navigator.gpu.getPreferredCanvasFormat() });
+            st("READY"); log("Device: " + ad.name);
         }
 
-        async function handlePaste() {
+        async function paster() {
             try {
-                const raw = await navigator.clipboard.readText();
-                const p = JSON.parse(raw);
-
-                // KEY-VALUE PATCH (The Micro-Payload)
-                if (p.key && state.uniforms[p.key]) {
-                    state.device.queue.writeBuffer(state.uniforms[p.key], 0, new Uint32Array([p.value]));
-                    log(`Patch Applied: ${p.key} -> ${p.value}`);
-                    return;
+                const txt = await navigator.clipboard.readText();
+                const payload = JSON.parse(txt);
+                
+                // UPDATE HTML IF PRESENT
+                if (payload.html) document.getElementById('view').innerHTML = payload.html;
+                
+                // EXECUTE JS - The "Sovereign" Way
+                if (payload.js) {
+                    // We use an immediately invoked function expression (IIFE)
+                    const fn = new Function('p', 'state', `return (async () => { ${payload.js} })();`);
+                    await fn(payload, state);
+                    st("LIVE");
                 }
-
-                // FULL KERNEL INJECTION
-                if (p.js) {
-                    const blob = new Blob([`async function execute(p, state) { ${p.js} }`], {type: 'text/javascript'});
-                    const url = URL.createObjectURL(blob);
-                    const { execute } = await import(url);
-                    await execute(p, state);
-                    URL.revokeObjectURL(url);
-                    st.innerText = "● KERNEL_LIVE";
-                    log("Full Boot Success");
-                }
-            } catch (e) {
-                log(e.message, true);
-            }
+            } catch (e) { log("ERR: " + e.message); console.error(e); }
         }
-
-        window.addEventListener('load', init);
+        init();
     </script>
 </body>
 </html>
