@@ -3,67 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Axiomatic Bridge</title>
+    <title>Axiomatic Mobile Bridge</title>
     <style>
-        :root { --neon: #00ff9d; }
-        body { margin: 0; background: #000; color: var(--neon); font-family: monospace; overflow: hidden; }
-        
-        /* The GPU Layer - Always full screen */
-        #canvas-container { position: absolute; inset: 0; z-index: 1; }
-        
-        /* The System Layer - Floating and semi-transparent */
-        #terminal { 
-            position: absolute; bottom: 0; left: 0; right: 0; height: 180px;
-            background: rgba(0, 0, 0, 0.85); border-top: 1px solid #222;
-            z-index: 10; display: flex; flex-direction: column; padding: 10px;
+        :root { --neon: #00ff9d; --glass: rgba(10, 10, 10, 0.8); }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: #000; overflow: hidden; font-family: 'SF Mono', monospace; 
+            user-select: none; -webkit-tap-highlight-color: transparent;
         }
 
-        #logs { flex-grow: 1; overflow-y: auto; font-size: 11px; margin-bottom: 8px; }
-        .log-entry { border-left: 2px solid var(--neon); padding-left: 8px; margin-bottom: 3px; }
-        
-        button { 
-            background: var(--neon); color: #000; border: none; padding: 12px; 
-            font-weight: bold; width: 100%; cursor: pointer; text-transform: uppercase;
+        /* Full-bleed Hardware Layer */
+        #render-target { position: absolute; inset: 0; z-index: 1; }
+
+        /* Minimal Status Bar (Top) */
+        #status-bar {
+            position: absolute; top: 0; left: 0; right: 0;
+            height: 30px; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            z-index: 100; display: flex; align-items: center; padding: 0 15px;
+            font-size: 9px; color: var(--neon); letter-spacing: 1px; pointer-events: none;
+        }
+
+        /* Collapsible Terminal (Bottom) */
+        #terminal {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: var(--glass); backdrop-filter: blur(15px);
+            border-top: 1px solid rgba(0, 255, 157, 0.2);
+            z-index: 100; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex; flex-direction: column;
+        }
+
+        #terminal.hidden { transform: translateY(calc(100% - 40px)); }
+
+        #handle {
+            height: 40px; width: 100%; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; pointer-events: auto;
+        }
+
+        #handle::after {
+            content: ''; width: 40px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px;
+        }
+
+        #log-stream { 
+            height: 120px; overflow-y: auto; padding: 0 15px 15px 15px; 
+            font-size: 10px; color: #aaa;
+        }
+
+        .log-entry { margin-bottom: 4px; border-left: 2px solid var(--neon); padding-left: 8px; }
+
+        /* The Ghost Button (Full Screen Trigger) */
+        #touch-zone {
+            position: absolute; inset: 0; z-index: 50; 
+            display: flex; justify-content: center; align-items: center;
+            pointer-events: auto;
         }
     </style>
 </head>
 <body>
 
-    <div id="canvas-container"></div>
+    <div id="status-bar">AXIOMATIC // SYSTEM: STANDBY</div>
+    
+    <div id="render-target"></div>
 
-    <div id="terminal">
-        <div id="logs"></div>
-        <button id="pasteBtn">Execute Clipboard Payload</button>
+    <div id="touch-zone"></div>
+
+    <div id="terminal" class="hidden">
+        <div id="handle" onclick="document.getElementById('terminal').classList.toggle('hidden')"></div>
+        <div id="log-stream">
+            <div class="log-entry">KERNEL INIT... OK</div>
+            <div class="log-entry">DOUBLE-TAP SCREEN TO PASTE PAYLOAD</div>
+        </div>
     </div>
 
     <script>
-        const logContainer = document.getElementById('logs');
-        
+        const stream = document.getElementById('log-stream');
+        const status = document.getElementById('status-bar');
+
         window.axiomaticLog = (msg) => {
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            entry.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            logContainer.appendChild(entry);
-            logContainer.scrollTop = logContainer.scrollHeight;
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            stream.appendChild(div);
+            stream.scrollTop = stream.scrollHeight;
+            status.innerText = `AXIOMATIC // ${msg.toUpperCase()}`;
         };
 
         window.inject = async (p) => {
             try {
-                window.axiomaticLog("Initializing: " + p.id);
-                document.getElementById('canvas-container').innerHTML = p.html || "";
-                const run = new Function('payload', p.js);
-                await run(p);
-            } catch (err) { window.axiomaticLog("FAIL: " + err.message); }
+                window.axiomaticLog("LOADING: " + p.id);
+                document.getElementById('render-target').innerHTML = p.html || "";
+                const task = new Function('payload', p.js);
+                await task(p);
+                window.axiomaticLog("ACTIVE: " + p.id);
+            } catch (e) {
+                window.axiomaticLog("ERROR: " + e.message);
+            }
         };
 
-        document.getElementById('pasteBtn').onclick = async () => {
-            try {
-                const text = await navigator.clipboard.readText();
-                eval(text);
-            } catch (e) { window.axiomaticLog("Clipboard Access Denied"); }
-        };
-
-        window.axiomaticLog("System Baseline Restored.");
+        // Double-Tap Logic for Mobile Ease-of-Use
+        let lastTap = 0;
+        document.getElementById('touch-zone').addEventListener('touchend', async (e) => {
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                try {
+                    const raw = await navigator.clipboard.readText();
+                    eval(raw);
+                } catch (err) {
+                    window.axiomaticLog("CLIPBOARD ERROR: PLEASE TAP ALLOW");
+                }
+            }
+            lastTap = now;
+        });
     </script>
 </body>
 </html>
