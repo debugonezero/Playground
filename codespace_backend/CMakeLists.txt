@@ -20,6 +20,9 @@ target_link_libraries(codespace_backend INTERFACE OpenMP::OpenMP_CXX)
 add_executable(codespace_example examples/main.cpp)
 target_link_libraries(codespace_example PRIVATE codespace_backend)
 
+add_executable(codespace_demo examples/demo.cpp)
+target_link_libraries(codespace_demo PRIVATE codespace_backend)
+
 add_executable(codespace_test tests/test_tensor.cpp)
 target_link_libraries(codespace_test PRIVATE codespace_backend)
 
