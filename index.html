@@ -8,19 +8,17 @@
         :root { --neon: #00ff9d; --bg: #050505; }
         body { margin: 0; background: var(--bg); color: var(--neon); font-family: 'SF Mono', monospace; overflow: hidden; }
         
-        #canvas-container { position: absolute; top: 0; width: 100%; height: 70%; background: #000; }
+        #canvas-container { position: absolute; top: 0; width: 100%; height: 100%; background: #000; }
         
         #output_console { 
-            position: absolute; bottom: 0; width: 100%; height: 30%; 
-            background: rgba(10, 10, 10, 0.98); border-top: 1px solid #333;
-            overflow-y: auto; padding: 15px; font-size: 11px; box-sizing: border-box;
-            box-shadow: 0 -10px 20px rgba(0,0,0,0.5);
+            position: absolute; bottom: 0; width: 100%; height: 25%; 
+            background: rgba(5, 5, 5, 0.9); border-top: 1px solid #222;
+            overflow-y: auto; padding: 12px; font-size: 11px; box-sizing: border-box;
+            pointer-events: none; /* Keeps the focus on the GPU interaction */
         }
 
-        .log-entry { margin-bottom: 5px; border-left: 2px solid var(--neon); padding-left: 10px; animation: fadeIn 0.3s; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
-        
-        .header { display: flex; justify-content: space-between; font-size: 10px; color: #666; margin-bottom: 10px; text-transform: uppercase; }
+        .log-entry { margin-bottom: 4px; border-left: 2px solid var(--neon); padding-left: 8px; opacity: 0.8; }
+        .system-header { font-size: 9px; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
     </style>
 </head>
 <body>
@@ -28,59 +26,51 @@
     <div id="canvas-container"></div>
 
     <div id="output_console">
-        <div class="header">
-            <span>System: Axiomatic v1.0</span>
-            <span id="gpu-status">GPU: Awaiting Adapter</span>
-        </div>
+        <div class="system-header">Axiomatic v1.0 // Direct Bridge // i9-5700XT</div>
         <div id="logs"></div>
     </div>
 
     <script>
-        window.AXIOMATIC_STATE = { logs: [], activePayload: null };
         const logContainer = document.getElementById('logs');
-        const gpuStatus = document.getElementById('gpu-status');
 
-        // Professional Logging System
+        // Clean, minimalist logging
         window.axiomaticLog = (data) => {
             const entry = document.createElement('div');
             entry.className = 'log-entry';
-            const timestamp = new Date().toLocaleTimeString().split(' ')[0];
-            entry.innerHTML = `<span style="color:#555">[${timestamp}]</span> ${typeof data === 'object' ? JSON.stringify(data) : data}`;
+            const time = new Date().toLocaleTimeString().split(' ')[0];
+            entry.innerHTML = `<span style="color:#444">[${time}]</span> ${data}`;
             logContainer.appendChild(entry);
             logContainer.scrollTop = logContainer.scrollHeight;
-            window.AXIOMATIC_STATE.logs.push({ t: Date.now(), data });
         };
 
-        // The Injection Bridge
+        // The original Direct Injection logic
         window.inject = async (payload) => {
             try {
-                window.axiomaticLog("Initializing Injection: " + payload.id);
+                window.axiomaticLog("Handshake: " + payload.id);
                 
-                // 1. Clear previous UI
-                document.getElementById('canvas-container').innerHTML = payload.html || "";
+                // Clear the container for the new render
+                const container = document.getElementById('canvas-container');
+                container.innerHTML = payload.html || "";
                 
-                // 2. Build and execute the orchestration
-                const executionTask = new Function('payload', payload.js);
-                await executionTask(payload);
+                // Direct execution of the GPU orchestration
+                const task = new Function('payload', payload.js);
+                await task(payload);
                 
-                window.AXIOMATIC_STATE.activePayload = payload.id;
-                window.axiomaticLog("Success: " + payload.id + " running.");
+                window.axiomaticLog("Status: " + payload.id + " active.");
             } catch (err) {
-                window.axiomaticLog("CRITICAL ERROR: " + err.message);
+                window.axiomaticLog("CRITICAL: " + err.message);
             }
         };
 
-        // Check WebGPU Support
+        // Hardware Verification
         (async () => {
             if (!navigator.gpu) {
-                window.axiomaticLog("WebGPU not supported on this browser/hardware.");
-                gpuStatus.innerText = "GPU: UNSUPPORTED";
+                window.axiomaticLog("WebGPU not detected.");
                 return;
             }
             const adapter = await navigator.gpu.requestAdapter();
             if (adapter) {
-                gpuStatus.innerText = `GPU: ${adapter.name || 'Generic WebGPU'}`;
-                window.axiomaticLog("Hardware Bridge Ready.");
+                window.axiomaticLog("Hardware Verified: " + (adapter.name || "WebGPU Engine"));
             }
         })();
     </script>
