@@ -2,82 +2,87 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Axiomatic Remote Bridge</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Axiomatic Hardware Bridge</title>
     <style>
-        body { margin: 0; background: #000; color: #00ff9d; font-family: monospace; overflow: hidden; }
-        #canvas-container { position: absolute; top: 0; width: 100%; height: 75%; background: #050505; }
+        :root { --neon: #00ff9d; --bg: #050505; }
+        body { margin: 0; background: var(--bg); color: var(--neon); font-family: 'SF Mono', monospace; overflow: hidden; }
+        
+        #canvas-container { position: absolute; top: 0; width: 100%; height: 70%; background: #000; }
+        
         #output_console { 
-            position: absolute; bottom: 0; width: 100%; height: 25%; 
-            background: rgba(10, 10, 10, 0.95); border-top: 1px solid #333;
-            overflow-y: auto; padding: 10px; font-size: 11px; box-sizing: border-box;
+            position: absolute; bottom: 0; width: 100%; height: 30%; 
+            background: rgba(10, 10, 10, 0.98); border-top: 1px solid #333;
+            overflow-y: auto; padding: 15px; font-size: 11px; box-sizing: border-box;
+            box-shadow: 0 -10px 20px rgba(0,0,0,0.5);
         }
-        .log { margin-bottom: 4px; border-left: 2px solid #00ff9d; padding-left: 8px; opacity: 0.8; }
-        .sync-indicator { position: absolute; top: 10px; right: 10px; font-size: 9px; color: #555; }
+
+        .log-entry { margin-bottom: 5px; border-left: 2px solid var(--neon); padding-left: 10px; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
+        
+        .header { display: flex; justify-content: space-between; font-size: 10px; color: #666; margin-bottom: 10px; text-transform: uppercase; }
     </style>
 </head>
 <body>
+
     <div id="canvas-container"></div>
-    <div id="sync-status" class="sync-indicator">SYNC: IDLE</div>
-    <div id="output_console">Initializing Axiomatic Bridge...</div>
+
+    <div id="output_console">
+        <div class="header">
+            <span>System: Axiomatic v1.0</span>
+            <span id="gpu-status">GPU: Awaiting Adapter</span>
+        </div>
+        <div id="logs"></div>
+    </div>
 
     <script>
-        window.AXIOMATIC_STATE = { last_id: null, logs: [], status: "READY" };
-        const consoleEl = document.getElementById('output_console');
-        const syncEl = document.getElementById('sync-status');
+        window.AXIOMATIC_STATE = { logs: [], activePayload: null };
+        const logContainer = document.getElementById('logs');
+        const gpuStatus = document.getElementById('gpu-status');
 
+        // Professional Logging System
         window.axiomaticLog = (data) => {
             const entry = document.createElement('div');
-            entry.className = 'log';
-            entry.innerText = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(data)}`;
-            consoleEl.appendChild(entry);
-            consoleEl.scrollTop = consoleEl.scrollHeight;
-            window.AXIOMATIC_STATE.logs.push(data);
+            entry.className = 'log-entry';
+            const timestamp = new Date().toLocaleTimeString().split(' ')[0];
+            entry.innerHTML = `<span style="color:#555">[${timestamp}]</span> ${typeof data === 'object' ? JSON.stringify(data) : data}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            window.AXIOMATIC_STATE.logs.push({ t: Date.now(), data });
         };
 
-        const inject = (payload) => {
+        // The Injection Bridge
+        window.inject = async (payload) => {
             try {
-                if (!payload || !payload.js) return;
-                window.AXIOMATIC_STATE.status = "EXECUTING";
+                window.axiomaticLog("Initializing Injection: " + payload.id);
                 
+                // 1. Clear previous UI
                 document.getElementById('canvas-container').innerHTML = payload.html || "";
                 
-                // Execute JS with payload context
-                const run = new Function('payload', payload.js);
-                run(payload);
+                // 2. Build and execute the orchestration
+                const executionTask = new Function('payload', payload.js);
+                await executionTask(payload);
                 
-                window.axiomaticLog({ event: "Injected", id: payload.id });
-            } catch (e) {
-                window.axiomaticLog({ event: "Error", msg: e.message });
+                window.AXIOMATIC_STATE.activePayload = payload.id;
+                window.axiomaticLog("Success: " + payload.id + " running.");
+            } catch (err) {
+                window.axiomaticLog("CRITICAL ERROR: " + err.message);
             }
         };
 
-        // --- THE AUTO-SYNC BRIDGE ---
-        // I will provide the specific Gist URL once you've set up the infrastructure
-        const GIST_URL = 'https://gist.githubusercontent.com/debugonezero/6bc5bc344ed9c9a26bfd1ce204b46465/raw/payload.gist
-';
-
-        async function sync() {
-            try {
-                syncEl.innerText = "SYNC: POLLING...";
-                const res = await fetch(GIST_URL, { cache: 'no-store' });
-                if (!res.ok) throw new Error("Gist Not Found");
-                
-                const payload = await res.json();
-
-                if (payload.id !== window.AXIOMATIC_STATE.last_id) {
-                    window.AXIOMATIC_STATE.last_id = payload.id;
-                    inject(payload);
-                }
-                syncEl.innerText = "SYNC: OK";
-            } catch (err) {
-                syncEl.innerText = "SYNC: ERROR";
+        // Check WebGPU Support
+        (async () => {
+            if (!navigator.gpu) {
+                window.axiomaticLog("WebGPU not supported on this browser/hardware.");
+                gpuStatus.innerText = "GPU: UNSUPPORTED";
+                return;
             }
-        }
-
-        // Poll every 2 seconds
-        setInterval(sync, 2000);
-        window.axiomaticLog({ system: "Bridge_Online", mode: "Auto-Sync" });
+            const adapter = await navigator.gpu.requestAdapter();
+            if (adapter) {
+                gpuStatus.innerText = `GPU: ${adapter.name || 'Generic WebGPU'}`;
+                window.axiomaticLog("Hardware Bridge Ready.");
+            }
+        })();
     </script>
 </body>
 </html>
