@@ -2,72 +2,54 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Axiom Executive</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AXIOM_V4.2_NATIVE_SHELL</title>
     <style>
-        body, html { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: monospace; }
-        #ui-layer { position: fixed; top: 10px; right: 10px; z-index: 1000; display: flex; gap: 10px; }
-        button { background: #111; color: #0f0; border: 1px solid #0f0; padding: 8px 12px; cursor: pointer; font-size: 11px; text-transform: uppercase; }
-        button:hover { background: #0f0; color: #000; }
-        #canvas-root { width: 100vw; height: 100vh; }
+        body { margin:0; background:#000; color:#34c759; font-family:monospace; overflow:hidden; }
+        #vram-viewport { height:60vh; width:100%; position:relative; background:#050505; border-bottom:1px solid #222; }
+        #terminal { height:40vh; padding:15px; overflow-y:auto; font-size:12px; line-height:1.4; background:#000; }
+        .stat-row { display:flex; justify-content:space-between; padding:10px; background:#1c1c1e; border-bottom:1px solid #333; }
+        .critical { color:#ff3b30; }
     </style>
 </head>
 <body>
-    <div id="ui-layer">
-        <button id="copy-boot">Copy Boot Prompt</button>
-        <button id="paste-inject">Paste & Inject</button>
+    <div class="stat-row">
+        <span>RAM: <span id="ram-val">1.42 GB</span></span>
+        <span>SIGMA: <span id="sigma-val">0.000σ</span></span>
     </div>
-    <div id="canvas-root"></div>
+    
+    <div id="vram-viewport">
+        <!-- WEBGPU RENDERING CANVAS LIVES HERE -->
+        <canvas id="gpu-canvas" style="width:100%; height:100%;"></canvas>
+    </div>
+
+    <div id="terminal">
+        [ SYSTEM ] INITIALIZING_A15_BIONIC_SHELL...<br>
+        [ READY ] WAITING_FOR_PAYLOAD_INJECTION...
+    </div>
 
     <script>
-        const state = { device: null, ctx: null, currentId: null, size: { w: window.innerWidth, h: window.innerHeight } };
-
-        function ingest(p) {
-            if (state.currentId === p.id) return;
-            state.currentId = p.id;
-            document.getElementById('canvas-root').innerHTML = p.html;
-            try {
-                new Function('p', 'state', p.js)(p, state);
-            } catch (e) { console.error("EXECUTION_FAILURE:", e); }
-        }
-
-        // CLIPBOARD INJECTION: Restored functionality
-        document.getElementById('paste-inject').onclick = async () => {
-            try {
-                const text = await navigator.clipboard.readText();
-                const p = JSON.parse(text);
-                ingest(p);
-            } catch (e) { alert("Invalid Payload in Clipboard"); }
+        const log = (msg, color) => {
+            const div = document.getElementById('terminal');
+            div.innerHTML += `<div style="color:${color || '#8e8e93'}">> ${msg}</div>`;
+            div.scrollTop = div.scrollHeight;
         };
 
-        // BOOT PROMPT: Technical Context
-        document.getElementById('copy-boot').onclick = () => {
-            const bootContext = {
-                role: "WebGPU Technical Architect",
-                specs: {
-                    engine: "new Function('p', 'state', p.js)",
-                    globals: ["state.device", "state.ctx", "state.size", "p.wgsl"],
-                    constraints: "rAF loops must check (state.currentId !== p.id)"
-                }
-            };
-            navigator.clipboard.writeText(JSON.stringify(bootContext, null, 2)).then(() => alert("BOOT_PROMPT_COPIED"));
-        };
+        // SHARED WEBGPU CONTEXT
+        let device, weightBuffer, patchBuffer;
 
-        async function boot() {
-            if (!navigator.gpu) return;
-            const adp = await navigator.gpu.requestAdapter();
-            state.device = await adp.requestDevice();
-            
-            (async function poll() {
-                try {
-                    const r = await fetch('payload.json?v=' + Date.now());
-                    if (r.ok) ingest(await r.json());
-                } catch (e) {}
-                setTimeout(poll, 1500);
-            })();
+        async function initGPU() {
+            const adapter = await navigator.gpu.requestAdapter();
+            device = await adapter.requestDevice();
+            log("WebGPU_ACTIVE: A15_SILICON_CONNECTED", "#34c759");
         }
+        initGPU();
 
-        window.onresize = () => { state.size.w = window.innerWidth; state.size.h = window.innerHeight; };
-        boot();
+        // PAYLOAD HANDLER
+        window.executePayload = async (payload) => {
+            log("INJECTING_V4.2_WEIGHT_LOGIC...", "#fff");
+            eval(payload.js); // Execute the incoming binary logic
+        };
     </script>
 </body>
 </html>
