@@ -1,33 +1,45 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        #vram-viewport { flex: 1; width: 100%; background: #050505; }
-        canvas { width: 100%; height: 100%; display: block; }
-        #paste-btn { height: 80px; width: 100%; background: #fff; color: #000; border: none; font-size: 20px; font-weight: bold; cursor: pointer; }
+        body { margin: 0; background: #000; color: #fff; font-family: monospace; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #viewport { flex: 1; position: relative; background: #050505; }
+        canvas { width: 100%; height: 100%; }
+        #btn-paste { height: 70px; background: #222; color: #34c759; border: 2px solid #333; font-family: inherit; font-weight: bold; cursor: pointer; }
+        #btn-paste:active { background: #333; }
+        #log { position: absolute; bottom: 80px; left: 10px; font-size: 10px; pointer-events: none; color: #8e8e93; }
     </style>
 </head>
 <body>
-    <div id="vram-viewport"><canvas id="main_canvas"></canvas></div>
-    <button id="paste-btn">PASTE_PAYLOAD</button>
+    <div id="viewport"><canvas id="gpu_canvas"></canvas></div>
+    <div id="log">SYSTEM_IDLE...</div>
+    <button id="btn-paste">PASTE_FROM_CLIPBOARD</button>
 
     <script>
-        const btn = document.getElementById('paste-btn');
+        const canvas = document.getElementById('gpu_canvas');
+        const logger = document.getElementById('log');
         
-        btn.onclick = async () => {
+        const log = (msg) => { logger.innerText = `> ${msg}`; console.log(msg); };
+
+        document.getElementById('btn-paste').onclick = async () => {
             try {
+                // 1. Force the browser to request clipboard permission on click
                 const text = await navigator.clipboard.readText();
-                const payload = JSON.parse(text);
+                if (!text) { log("CLIPBOARD_EMPTY"); return; }
                 
-                // EXECUTE THE PAYLOAD
-                if (payload.js) {
-                    const execute = new Function('payload', payload.js);
-                    execute(payload);
-                }
+                // 2. Parse the payload
+                const payload = JSON.parse(text);
+                log("PAYLOAD_RECEIVED: EXECUTING...");
+
+                // 3. Execution Bridge
+                // We wrap it in an async IIFE to allow 'await' inside pasted JS
+                const blob = new Function('payload', 'canvas', `(async () => { ${payload.js} })()`);
+                blob(payload, canvas);
+
             } catch (err) {
-                console.error("Payload Failure:", err);
+                log("EXECUTION_ERR: " + err.message);
             }
         };
     </script>
