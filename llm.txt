@@ -1,0 +1,31 @@
+# Sovereign Lab / Axiom Playground Specifications
+
+## System Overview
+This repository hosts a WebGPU-based live execution playground. It uses a "Passive Polling Bridge" where an `index.html` receiver fetches a JSON payload and injects it into a persistent hardware state.
+
+## Payload Schema (JSON)
+All payloads must strictly follow this structure:
+- `id`: (String) Unique identifier. Used to lock/kill animation loops.
+- `html`: (String) DOM elements (usually a <canvas id='c'>).
+- `wgsl`: (String) WebGPU shader code (Vertex, Fragment, or Compute).
+- `js`: (String) Execution logic. Injected via `new Function('p', 'state', p.js)`.
+
+## Global State & API
+The receiver provides a global `state` object. Do NOT re-initialize these if they exist:
+- `state.device`: The active GPUDevice.
+- `state.ctx`: The GPUCanvasContext.
+- `state.size`: Object { w: number, h: number } updated on resize.
+- `state.currentId`: The ID of the currently executing payload.
+
+## Execution Rules for AI
+When generating payloads for this system:
+1. MANDATORY GUARD: Every animation loop MUST start with:
+   `if (state.currentId !== p.id) return;`
+2. UNIFORM ALIGNMENT: Use a 16-byte aligned struct for uniforms.
+   `struct U { res: vec2f, time: f32, pad: f32 };`
+3. DEVICE PERSISTENCE: Always check `if (!state.device)` before requesting an adapter.
+4. COORDINATE SYSTEM: Standardize on a 4-vertex `triangle-strip` for full-screen quads.
+5. NO EXTERNAL DEPS: All logic must be self-contained in the `js` string.
+
+## Example Payload Structure
+Refer to the "GPU_COMPUTE_BENCH" ID in the repository history for the golden standard of a working Uniform-based fragment shader.
