@@ -1,54 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AXIOM_V4.2_NATIVE_SHELL</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <style>
-        body { margin:0; background:#000; color:#34c759; font-family:monospace; overflow:hidden; }
-        #vram-viewport { height:60vh; width:100%; position:relative; background:#050505; border-bottom:1px solid #222; }
-        #terminal { height:40vh; padding:15px; overflow-y:auto; font-size:12px; line-height:1.4; background:#000; }
-        .stat-row { display:flex; justify-content:space-between; padding:10px; background:#1c1c1e; border-bottom:1px solid #333; }
-        .critical { color:#ff3b30; }
+        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        #vram-viewport { flex: 1; width: 100%; background: #050505; }
+        canvas { width: 100%; height: 100%; display: block; }
+        #paste-btn { height: 80px; width: 100%; background: #fff; color: #000; border: none; font-size: 20px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div class="stat-row">
-        <span>RAM: <span id="ram-val">1.42 GB</span></span>
-        <span>SIGMA: <span id="sigma-val">0.000σ</span></span>
-    </div>
-    
-    <div id="vram-viewport">
-        <!-- WEBGPU RENDERING CANVAS LIVES HERE -->
-        <canvas id="gpu-canvas" style="width:100%; height:100%;"></canvas>
-    </div>
-
-    <div id="terminal">
-        [ SYSTEM ] INITIALIZING_A15_BIONIC_SHELL...<br>
-        [ READY ] WAITING_FOR_PAYLOAD_INJECTION...
-    </div>
+    <div id="vram-viewport"><canvas id="main_canvas"></canvas></div>
+    <button id="paste-btn">PASTE_PAYLOAD</button>
 
     <script>
-        const log = (msg, color) => {
-            const div = document.getElementById('terminal');
-            div.innerHTML += `<div style="color:${color || '#8e8e93'}">> ${msg}</div>`;
-            div.scrollTop = div.scrollHeight;
-        };
-
-        // SHARED WEBGPU CONTEXT
-        let device, weightBuffer, patchBuffer;
-
-        async function initGPU() {
-            const adapter = await navigator.gpu.requestAdapter();
-            device = await adapter.requestDevice();
-            log("WebGPU_ACTIVE: A15_SILICON_CONNECTED", "#34c759");
-        }
-        initGPU();
-
-        // PAYLOAD HANDLER
-        window.executePayload = async (payload) => {
-            log("INJECTING_V4.2_WEIGHT_LOGIC...", "#fff");
-            eval(payload.js); // Execute the incoming binary logic
+        const btn = document.getElementById('paste-btn');
+        
+        btn.onclick = async () => {
+            try {
+                const text = await navigator.clipboard.readText();
+                const payload = JSON.parse(text);
+                
+                // EXECUTE THE PAYLOAD
+                if (payload.js) {
+                    const execute = new Function('payload', payload.js);
+                    execute(payload);
+                }
+            } catch (err) {
+                console.error("Payload Failure:", err);
+            }
         };
     </script>
 </body>
