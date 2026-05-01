@@ -1,45 +1,60 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>UNIFIED_SHELL_V4.2</title>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: monospace; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
-        #viewport { flex: 1; position: relative; background: #050505; }
-        canvas { width: 100%; height: 100%; }
-        #btn-paste { height: 70px; background: #222; color: #34c759; border: 2px solid #333; font-family: inherit; font-weight: bold; cursor: pointer; }
-        #btn-paste:active { background: #333; }
-        #log { position: absolute; bottom: 80px; left: 10px; font-size: 10px; pointer-events: none; color: #8e8e93; }
+        /* Permanent Shell Styles */
+        body { margin: 0; background: #000; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #injection-point { flex: 1; position: relative; width: 100%; height: 100%; overflow: hidden; }
+        #paste-bar { height: 65px; background: #111; color: #0f0; border: none; border-top: 1px solid #333; font-family: monospace; font-weight: bold; cursor: pointer; font-size: 16px; transition: background 0.2s; }
+        #paste-bar:active { background: #222; }
     </style>
 </head>
 <body>
-    <div id="viewport"><canvas id="gpu_canvas"></canvas></div>
-    <div id="log">SYSTEM_IDLE...</div>
-    <button id="btn-paste">PASTE_FROM_CLIPBOARD</button>
+
+    <!-- THE PURE VIEWPORT: Everything inside here is replaced by the payload -->
+    <div id="injection-point">
+        <div style="color: #444; padding: 20px; font-family: monospace;">[ IDLE ] READY_FOR_CLIPBOARD_INJECTION...</div>
+    </div>
+
+    <button id="paste-bar">PASTE_AND_RUN_OPERATOR</button>
 
     <script>
-        const canvas = document.getElementById('gpu_canvas');
-        const logger = document.getElementById('log');
-        
-        const log = (msg) => { logger.innerText = `> ${msg}`; console.log(msg); };
-
-        document.getElementById('btn-paste').onclick = async () => {
+        document.getElementById('paste-bar').onclick = async () => {
             try {
-                // 1. Force the browser to request clipboard permission on click
-                const text = await navigator.clipboard.readText();
-                if (!text) { log("CLIPBOARD_EMPTY"); return; }
-                
-                // 2. Parse the payload
-                const payload = JSON.parse(text);
-                log("PAYLOAD_RECEIVED: EXECUTING...");
+                const rawData = await navigator.clipboard.readText();
+                const payload = JSON.parse(rawData);
+                const viewport = document.getElementById('injection-point');
 
-                // 3. Execution Bridge
-                // We wrap it in an async IIFE to allow 'await' inside pasted JS
-                const blob = new Function('payload', 'canvas', `(async () => { ${payload.js} })()`);
-                blob(payload, canvas);
+                // 1. CLEAN THE SLATE: Kill previous UI and Styles
+                viewport.innerHTML = ""; 
+
+                // 2. INJECT CSS: If the payload has style, isolate it
+                if (payload.css) {
+                    const styleTag = document.createElement('style');
+                    styleTag.textContent = payload.css;
+                    viewport.appendChild(styleTag);
+                }
+
+                // 3. INJECT HTML: Build the new interface
+                if (payload.html) {
+                    const template = document.createElement('div');
+                    template.innerHTML = payload.html;
+                    viewport.appendChild(template);
+                }
+
+                // 4. EXECUTE JS: Pass the payload context and local hardware pointers
+                if (payload.js) {
+                    // We use an Async Function constructor to handle the Higgs fetch/WebGPU
+                    const operator = new Function('payload', `(async () => { ${payload.js} })()`);
+                    operator(payload);
+                }
 
             } catch (err) {
-                log("EXECUTION_ERR: " + err.message);
+                console.error("SHELL_FAULT:", err);
+                alert("FAULT: " + err.message);
             }
         };
     </script>
