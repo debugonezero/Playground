@@ -6,51 +6,50 @@
     <style>
         body, html { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: monospace; }
         #ui-layer { position: fixed; top: 10px; right: 10px; z-index: 1000; display: flex; gap: 10px; }
-        button { background: #111; color: #0f0; border: 1px solid #0f0; padding: 8px 12px; cursor: pointer; font-size: 12px; }
+        button { background: #111; color: #0f0; border: 1px solid #0f0; padding: 8px 12px; cursor: pointer; font-size: 11px; text-transform: uppercase; }
         button:hover { background: #0f0; color: #000; }
         #canvas-root { width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
     <div id="ui-layer">
-        <button id="copy-boot">COPY BOOT PROMPT</button>
+        <button id="copy-boot">Copy Boot Prompt</button>
+        <button id="paste-inject">Paste & Inject</button>
     </div>
     <div id="canvas-root"></div>
 
     <script>
-        const state = {
-            device: null,
-            ctx: null,
-            currentId: null,
-            size: { w: window.innerWidth, h: window.innerHeight }
-        };
+        const state = { device: null, ctx: null, currentId: null, size: { w: window.innerWidth, h: window.innerHeight } };
 
-        // Execution Bridge
         function ingest(p) {
             if (state.currentId === p.id) return;
             state.currentId = p.id;
             document.getElementById('canvas-root').innerHTML = p.html;
             try {
                 new Function('p', 'state', p.js)(p, state);
-            } catch (e) { console.error("Execution Error:", e); }
+            } catch (e) { console.error("EXECUTION_FAILURE:", e); }
         }
 
-        // Clipboard Bootstrap Logic
+        // CLIPBOARD INJECTION: Restored functionality
+        document.getElementById('paste-inject').onclick = async () => {
+            try {
+                const text = await navigator.clipboard.readText();
+                const p = JSON.parse(text);
+                ingest(p);
+            } catch (e) { alert("Invalid Payload in Clipboard"); }
+        };
+
+        // BOOT PROMPT: Technical Context
         document.getElementById('copy-boot').onclick = () => {
             const bootContext = {
-                instruction: "Act as a WebGPU Technical Architect for a stateless polling receiver.",
-                repo_url: "https://debugonezero.github.io/Playground/",
-                environment_specs: {
-                    execution: "new Function('p', 'state', p.js)(p, state)",
+                role: "WebGPU Technical Architect",
+                specs: {
+                    engine: "new Function('p', 'state', p.js)",
                     globals: ["state.device", "state.ctx", "state.size", "p.wgsl"],
-                    loop_guard: "if (state.currentId !== p.id) return;",
-                    payload_schema: { id: "string", html: "string", wgsl: "string", js: "string" }
-                },
-                workflow: "Generate JSON payloads only. No prose. No re-initializing GPUDevice."
+                    constraints: "rAF loops must check (state.currentId !== p.id)"
+                }
             };
-            
-            navigator.clipboard.writeText(JSON.stringify(bootContext, null, 2))
-                .then(() => alert("Boot Prompt Copied to Clipboard"));
+            navigator.clipboard.writeText(JSON.stringify(bootContext, null, 2)).then(() => alert("BOOT_PROMPT_COPIED"));
         };
 
         async function boot() {
@@ -63,15 +62,11 @@
                     const r = await fetch('payload.json?v=' + Date.now());
                     if (r.ok) ingest(await r.json());
                 } catch (e) {}
-                setTimeout(poll, 1000);
+                setTimeout(poll, 1500);
             })();
         }
 
-        window.onresize = () => { 
-            state.size.w = window.innerWidth; 
-            state.size.h = window.innerHeight; 
-        };
-
+        window.onresize = () => { state.size.w = window.innerWidth; state.size.h = window.innerHeight; };
         boot();
     </script>
 </body>
