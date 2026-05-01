@@ -9,20 +9,31 @@
     </style>
 </head>
 <body>
-    <div id="viewport"><div style="padding:20px; color:#444;">[ LIVE_ON_GH_PAGES ] WAITING...</div></div>
+    <div id="viewport"><div style="padding:20px; color:#444;">[ SYSTEM_READY ]</div></div>
     <button id="btn-paste">PASTE_OPERATOR</button>
 
     <script>
         const view = document.getElementById('viewport');
         const btn = document.getElementById('btn-paste');
+        
+        // EXPOSE TO GLOBAL SCOPE for payload access
+        window.gpuDevice = null;
 
-        // THE FIX: Move the readText to the top of the stack
+        async function initGPU() {
+            if (!navigator.gpu) {
+                view.innerHTML = "<div style='color:red; padding:20px;'>WEBGPU_NOT_SUPPORTED</div>";
+                return;
+            }
+            const adapter = await navigator.gpu.requestAdapter();
+            window.gpuDevice = await adapter.requestDevice();
+            console.log("GPU_READY");
+        }
+        initGPU();
+
         btn.onclick = () => {
             navigator.clipboard.readText().then(text => {
                 const payload = JSON.parse(text);
-                
-                // Reset Viewport
-                view.innerHTML = "";
+                view.innerHTML = ""; // Clear UI
                 
                 if (payload.css) {
                     const s = document.createElement('style');
@@ -35,13 +46,17 @@
                     view.appendChild(d);
                 }
                 if (payload.js) {
-                    // Injecting as a script tag to ensure it hits global scope correctly
+                    // Pass the global gpuDevice into the execution context
                     const script = document.createElement('script');
-                    script.textContent = `(async (payload) => { ${payload.js} })( ${JSON.stringify(payload)} );`;
+                    script.textContent = `(async () => { 
+                        const device = window.gpuDevice;
+                        const payload = ${JSON.stringify(payload)};
+                        ${payload.js} 
+                    })();`;
                     view.appendChild(script);
                 }
             }).catch(err => {
-                view.innerHTML = `<div style="color:red; padding:20px;">CLIPBOARD_ERROR: ${err.message}</div>`;
+                view.innerHTML = `<div style='color:red; padding:20px;'>FAULT: ${err.message}</div>`;
             });
         };
     </script>
