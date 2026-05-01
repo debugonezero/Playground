@@ -1,14 +1,12 @@
 # REPO_SPEC: AXIOM_PLAYGROUND
 HOST_TYPE: Stateless WebGPU Receiver
-INJECTION_METHOD: Function Constructor (p, state)
-SCHEMA_REQUIREMENTS:
-  - id: string (UUID/Timestamp)
-  - html: string (DOM structure)
-  - wgsl: string (Shader source)
-  - js: string (Functional logic)
-STATE_PROPERTIES:
-  - state.device: GPUDevice (Persistent)
-  - state.ctx: GPUCanvasContext (Initialized per payload)
-  - state.size: {w: float, h: float} (Real-time)
-  - state.currentId: string (Identity verification)
-LOOP_CLEANUP: if (state.currentId !== p.id) return;
+CORE_ENGINE: new Function('p', 'state', p.js)
+GLOBAL_NAMESPACE:
+  - state.device: Persistent GPUDevice
+  - state.ctx: GPUCanvasContext
+  - state.size: {w, h}
+  - state.currentId: Payload Identity
+INJECTION_RULES:
+  - p.html is injected into #canvas-root via innerHTML
+  - p.js executes via Function constructor
+  - rAF loops must verify state.currentId == p.id
