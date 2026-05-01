@@ -1,61 +1,48 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>UNIFIED_SHELL_V4.2</title>
     <style>
-        /* Permanent Shell Styles */
-        body { margin: 0; background: #000; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
-        #injection-point { flex: 1; position: relative; width: 100%; height: 100%; overflow: hidden; }
-        #paste-bar { height: 65px; background: #111; color: #0f0; border: none; border-top: 1px solid #333; font-family: monospace; font-weight: bold; cursor: pointer; font-size: 16px; transition: background 0.2s; }
-        #paste-bar:active { background: #222; }
+        body { margin: 0; background: #000; color: #fff; font-family: monospace; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #viewport { flex: 1; position: relative; overflow: hidden; }
+        #btn-paste { height: 75px; background: #0f0; color: #000; border: none; font-weight: bold; font-size: 18px; cursor: pointer; }
     </style>
 </head>
 <body>
-
-    <!-- THE PURE VIEWPORT: Everything inside here is replaced by the payload -->
-    <div id="injection-point">
-        <div style="color: #444; padding: 20px; font-family: monospace;">[ IDLE ] READY_FOR_CLIPBOARD_INJECTION...</div>
-    </div>
-
-    <button id="paste-bar">PASTE_AND_RUN_OPERATOR</button>
+    <div id="viewport"><div style="padding:20px; color:#444;">[ LIVE_ON_GH_PAGES ] WAITING...</div></div>
+    <button id="btn-paste">PASTE_OPERATOR</button>
 
     <script>
-        document.getElementById('paste-bar').onclick = async () => {
-            try {
-                const rawData = await navigator.clipboard.readText();
-                const payload = JSON.parse(rawData);
-                const viewport = document.getElementById('injection-point');
+        const view = document.getElementById('viewport');
+        const btn = document.getElementById('btn-paste');
 
-                // 1. CLEAN THE SLATE: Kill previous UI and Styles
-                viewport.innerHTML = ""; 
-
-                // 2. INJECT CSS: If the payload has style, isolate it
+        // THE FIX: Move the readText to the top of the stack
+        btn.onclick = () => {
+            navigator.clipboard.readText().then(text => {
+                const payload = JSON.parse(text);
+                
+                // Reset Viewport
+                view.innerHTML = "";
+                
                 if (payload.css) {
-                    const styleTag = document.createElement('style');
-                    styleTag.textContent = payload.css;
-                    viewport.appendChild(styleTag);
+                    const s = document.createElement('style');
+                    s.textContent = payload.css;
+                    view.appendChild(s);
                 }
-
-                // 3. INJECT HTML: Build the new interface
                 if (payload.html) {
-                    const template = document.createElement('div');
-                    template.innerHTML = payload.html;
-                    viewport.appendChild(template);
+                    const d = document.createElement('div');
+                    d.innerHTML = payload.html;
+                    view.appendChild(d);
                 }
-
-                // 4. EXECUTE JS: Pass the payload context and local hardware pointers
                 if (payload.js) {
-                    // We use an Async Function constructor to handle the Higgs fetch/WebGPU
-                    const operator = new Function('payload', `(async () => { ${payload.js} })()`);
-                    operator(payload);
+                    // Injecting as a script tag to ensure it hits global scope correctly
+                    const script = document.createElement('script');
+                    script.textContent = `(async (payload) => { ${payload.js} })( ${JSON.stringify(payload)} );`;
+                    view.appendChild(script);
                 }
-
-            } catch (err) {
-                console.error("SHELL_FAULT:", err);
-                alert("FAULT: " + err.message);
-            }
+            }).catch(err => {
+                view.innerHTML = `<div style="color:red; padding:20px;">CLIPBOARD_ERROR: ${err.message}</div>`;
+            });
         };
     </script>
 </body>
