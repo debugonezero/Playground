@@ -2,18 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Axiom Playground</title>
+    <title>Axiom Executive</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-        #canvas-container { width: 100%; height: 100%; }
+        body, html { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: monospace; }
+        #ui-layer { position: fixed; top: 10px; right: 10px; z-index: 1000; }
+        button { background: #222; color: #0f0; border: 1px solid #0f0; padding: 5px 10px; cursor: pointer; }
+        #canvas-root { width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
-    <div id="canvas-container"></div>
+    <div id="ui-layer">
+        <button id="copy-prompt">COPY AGENT PROMPT</button>
+    </div>
+    <div id="canvas-root"></div>
 
     <script>
-        // GLOBAL STATE: The "Soul" of the Lab
         const state = {
             device: null,
             ctx: null,
@@ -21,52 +24,52 @@
             size: { w: window.innerWidth, h: window.innerHeight }
         };
 
-        // 1. Initialize Hardware
-        async function initGPU() {
-            if (!navigator.gpu) return alert("WebGPU not supported");
-            const adapter = await navigator.gpu.requestAdapter();
-            state.device = await adapter.requestDevice();
-            console.log("Hardware Initialized");
-        }
-
-        // 2. The Execution Bridge (The Missing Logic)
-        function executePayload(p) {
-            if (state.currentId === p.id) return; // Don't reload if nothing changed
+        // Execution Bridge
+        function ingest(p) {
+            if (state.currentId === p.id) return;
             state.currentId = p.id;
-
-            // Update DOM
-            document.getElementById('canvas-container').innerHTML = p.html;
-
-            // Ignite JS logic
+            document.getElementById('canvas-root').innerHTML = p.html;
             try {
-                // Pass 'p' and 'state' as local scope to the payload
-                const runner = new Function('p', 'state', p.js);
-                runner(p, state);
-            } catch (e) {
-                console.error("Axiom Execution Error:", e);
-            }
+                // Functional Injection
+                new Function('p', 'state', p.js)(p, state);
+            } catch (e) { console.error("Injection Failure:", e); }
         }
 
-        // 3. The Polling Loop (The "Watcher")
-        async function watch() {
-            try {
-                const res = await fetch('payload.json?t=' + Date.now());
-                const p = await res.json();
-                executePayload(p);
-            } catch (e) {
-                console.warn("Waiting for valid payload.json...");
-            }
-            setTimeout(watch, 1000); // Check every second
+        // State-Sync Prompt Logic
+        document.getElementById('copy-prompt').onclick = () => {
+            const promptSpec = {
+                role: "WebGPU Technical Architect",
+                context: "Axiom Playground Receiver",
+                specs: {
+                    engine: "new Function('p', 'state', p.js)",
+                    globals: ["state.device", "state.ctx", "state.size", "p.wgsl"],
+                    constraints: "rAF loops must check (state.currentId !== p.id)",
+                    input: "payload.json"
+                }
+            };
+            navigator.clipboard.writeText(JSON.stringify(promptSpec, null, 2));
+            alert("Technical Context Copied");
+        };
+
+        async function boot() {
+            const adp = await navigator.gpu.requestAdapter();
+            state.device = await adp.requestDevice();
+            
+            (async function poll() {
+                try {
+                    const r = await fetch('payload.json?v=' + Date.now());
+                    ingest(await r.json());
+                } catch (e) {}
+                setTimeout(poll, 1000);
+            })();
         }
 
-        // 4. Handle Resizing
-        window.addEventListener('resize', () => {
-            state.size.w = window.innerWidth;
-            state.size.h = window.innerHeight;
-        });
+        window.onresize = () => { 
+            state.size.w = window.innerWidth; 
+            state.size.h = window.innerHeight; 
+        };
 
-        // Start the Engine
-        initGPU().then(watch);
+        boot();
     </script>
 </body>
 </html>
