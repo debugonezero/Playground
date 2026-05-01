@@ -5,14 +5,15 @@
     <title>Axiom Executive</title>
     <style>
         body, html { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: monospace; }
-        #ui-layer { position: fixed; top: 10px; right: 10px; z-index: 1000; }
-        button { background: #222; color: #0f0; border: 1px solid #0f0; padding: 5px 10px; cursor: pointer; }
+        #ui-layer { position: fixed; top: 10px; right: 10px; z-index: 1000; display: flex; gap: 10px; }
+        button { background: #111; color: #0f0; border: 1px solid #0f0; padding: 8px 12px; cursor: pointer; font-size: 12px; }
+        button:hover { background: #0f0; color: #000; }
         #canvas-root { width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
     <div id="ui-layer">
-        <button id="copy-prompt">COPY AGENT PROMPT</button>
+        <button id="copy-boot">COPY BOOT PROMPT</button>
     </div>
     <div id="canvas-root"></div>
 
@@ -30,35 +31,37 @@
             state.currentId = p.id;
             document.getElementById('canvas-root').innerHTML = p.html;
             try {
-                // Functional Injection
                 new Function('p', 'state', p.js)(p, state);
-            } catch (e) { console.error("Injection Failure:", e); }
+            } catch (e) { console.error("Execution Error:", e); }
         }
 
-        // State-Sync Prompt Logic
-        document.getElementById('copy-prompt').onclick = () => {
-            const promptSpec = {
-                role: "WebGPU Technical Architect",
-                context: "Axiom Playground Receiver",
-                specs: {
-                    engine: "new Function('p', 'state', p.js)",
+        // Clipboard Bootstrap Logic
+        document.getElementById('copy-boot').onclick = () => {
+            const bootContext = {
+                instruction: "Act as a WebGPU Technical Architect for a stateless polling receiver.",
+                repo_url: "https://debugonezero.github.io/Playground/",
+                environment_specs: {
+                    execution: "new Function('p', 'state', p.js)(p, state)",
                     globals: ["state.device", "state.ctx", "state.size", "p.wgsl"],
-                    constraints: "rAF loops must check (state.currentId !== p.id)",
-                    input: "payload.json"
-                }
+                    loop_guard: "if (state.currentId !== p.id) return;",
+                    payload_schema: { id: "string", html: "string", wgsl: "string", js: "string" }
+                },
+                workflow: "Generate JSON payloads only. No prose. No re-initializing GPUDevice."
             };
-            navigator.clipboard.writeText(JSON.stringify(promptSpec, null, 2));
-            alert("Technical Context Copied");
+            
+            navigator.clipboard.writeText(JSON.stringify(bootContext, null, 2))
+                .then(() => alert("Boot Prompt Copied to Clipboard"));
         };
 
         async function boot() {
+            if (!navigator.gpu) return;
             const adp = await navigator.gpu.requestAdapter();
             state.device = await adp.requestDevice();
             
             (async function poll() {
                 try {
                     const r = await fetch('payload.json?v=' + Date.now());
-                    ingest(await r.json());
+                    if (r.ok) ingest(await r.json());
                 } catch (e) {}
                 setTimeout(poll, 1000);
             })();
